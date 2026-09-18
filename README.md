@@ -1,101 +1,92 @@
-# AI Inbox (AI Championship 2026 MVP)
+# AI Inbox — 흩어진 연락을 지금 해야 할 일로
 
-흩어진 연락을 관계별로 연결하고, 변경사항을 추적해 지금 해야 할 일을 보여주는 개인 업무 정리 웹 앱입니다.
-자세한 제품 기획은 `AI_Championship_2026_서비스_기획서.md`, 구현 계약(타입·API·판단 규칙)은
-`docs/implementation-contract.md`를 참고하세요.
+AI Championship 2026 대회 MVP. 여러 곳에서 받은 요청을 **관계(업체)별로 연결**하고, 같은 업무에 대한
+**변경을 추적**해 **지금 유효한 할 일**을 보여주는 웹 앱이다.
+
+- 제품 기획: [AI_Championship_2026_서비스_기획서.md](AI_Championship_2026_서비스_기획서.md)
+- 구현 계약(타입·판단 규칙·API): [docs/implementation-contract.md](docs/implementation-contract.md)
+- 수용 테스트 결과(T01–T20): [docs/acceptance.md](docs/acceptance.md)
+- 3분 시연 스크립트: [docs/demo-script.md](docs/demo-script.md)
+- 배포 가이드(Vercel + Turso): [docs/deploy.md](docs/deploy.md)
+
+## 핵심 장면
+
+1. "A창호 김과장입니다. 20일까지 300만원 송금 부탁드립니다." → 송금 3,000,000원, 마감 2026.09.20 업무 생성
+2. "A창호 이대리입니다. 송금은 22일까지 부탁드립니다." → **같은 업무**를 찾아 마감 09.20 → 09.22 변경안 제시 → [변경 반영]
+3. "24일까지 해주셔도 될 것 같긴 한데 확인해볼게요." → **변경 가능성**으로 표시, 현재 마감 09.22 유지
+
+AI는 해석과 연결 후보만 제안한다. 현재 값은 사용자가 결정했을 때만 서버 규칙으로 바뀐다.
+
+## 실행
+
+Node 20.9 이상 (개발 환경: Node 26).
+
+```bash
+npm install
+npm test                 # Vitest 181개
+npm run build            # 프로덕션 빌드(타입 검사 포함)
+npm start                # http://localhost:3000
+npm run dev              # 개발 서버
+```
+
+> Windows PowerShell 프로필 오류로 `npm`/`npx`가 실패하면 `node node_modules/next/dist/bin/next build`,
+> `node node_modules/vitest/vitest.mjs run`처럼 직접 실행하면 된다.
+
+환경 변수는 [.env.example](.env.example)을 복사해 `.env.local`로 만든다. **값이 하나도 없어도 동작한다** —
+이때 분석은 외부 호출 없는 규칙 엔진으로 처리되고 화면에 "데모 분석(규칙 기반)"으로 표시된다.
+
+## AI 연결
+
+| 순서 | 제공자 | 켜는 조건 |
+|---|---|---|
+| 1 | OmniRoute (로컬 AI 라우터, OpenAI 호환) | `OMNIROUTE_MODEL` (키를 요구하는 설정이면 `OMNIROUTE_API_KEY`도) |
+| 2 | Gemini | `GEMINI_API_KEY` + `GEMINI_MODEL` |
+| 3 | OpenRouter | `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` |
+| 마지막 | 데모 규칙 엔진 | `AI_DEMO_FALLBACK=true`(기본) |
+
+- 순서는 `AI_PROVIDER_ORDER`로 바꾼다. 실패·시간 초과(기본 20초)·형식 오류(1회 재시도 후)면 다음 제공자로 넘어간다.
+- 날짜("20일", "내일", "다음 주 금요일")와 금액("300만원 말고 350만원으로")은 AI 답과 별개로 서버가 결정적으로 다시 해석한다.
+- 입력 안의 지시문("이전 규칙을 무시하고…")은 분석 자료로만 취급한다.
+- OmniRoute는 이 PC에서만 접근 가능하다. 배포 서버에서는 Gemini·OpenRouter를 쓴다.
+
+### OmniRoute 연결 (로컬)
+
+이 PC의 OmniRoute는 클라이언트 API 키를 요구한다. OmniRoute 대시보드 → Endpoints에서 앱용 키를 만든 뒤:
+
+```bash
+omniroute dashboard
+```
+
+`.env.local`에 `OMNIROUTE_API_KEY=<발급한 키>`, `OMNIROUTE_MODEL=auto`를 넣고 서버를 다시 시작한다.
+분석 결과 화면의 배지가 "데모 분석" 대신 제공자 이름으로 바뀌면 연결된 것이다.
+
+## 입력 방식
+
+| 방식 | 상태 | 제한 |
+|---|---|---|
+| 텍스트 붙여넣기 | 사용 가능 | 2,000자 |
+| PDF | 사용 가능 (서버에서 글자 추출 → 입력창에 채움 → 확인 후 분석) | 4MB, 10페이지, 암호·스캔본 PDF 불가 |
+| 이미지 | AI 제공자가 연결됐을 때만 활성 (비전 모델로 글자 인식) | PNG·JPG·WEBP, 4MB |
+
+## 데이터 보관
+
+- 원문은 분석 요청을 처리하는 동안 서버 메모리와 브라우저 화면 상태에만 있다. DB·로그·브라우저 저장소에 쓰지 않는다.
+  저장되는 것은 관계·담당자·업무의 구조화 값과 "누가 무엇을 바꿨는지" 이력뿐이다.
+- 데모 세션은 쿠키로 구분되고 기본 24시간 뒤 삭제된다. 푸터의 [데모 데이터 삭제]로 즉시 지울 수 있다.
+- 외부 AI 공급자 쪽 보존 정책은 공급자 설정·약관을 따른다. 앱에서 지워도 공급자 쪽 무보관을 보장하지 않는다.
+
+## 구조
+
+```
+src/lib/types.ts        공유 타입 (API·도메인 계약)
+src/lib/ai/             제공자 체인·프롬프트·날짜/금액 해석·데모 규칙 엔진·비전(이미지 글자 인식)
+src/lib/server/         DB(libSQL)·세션·판단 규칙(judge)·결정 적용(apply)·조회
+src/lib/files/          PDF·이미지 파일 검증과 글자 추출
+src/app/api/            API 라우트
+src/app/, src/components/  화면 (대시보드·입력/분석·확인 필요·관계·타임라인)
+tests/                  Vitest (ai / server / files) + 실제 모델 응답·한국어 PDF 픽스처
+```
 
 ## 기술 스택
 
-- Next.js 15 (App Router) + React 19 + TypeScript, Node 런타임
-- 저장소: `node:sqlite`(`DatabaseSync`) 단일 파일 DB — 별도 DB 서버 불필요
-- 검증: Zod
-- 테스트: Vitest
-
-## 설치 · 실행 · 검증
-
-Windows에서 `npm.cmd`를 사용합니다. 이 리포지토리에는 `node_modules`가 커밋되어 있지 않으므로
-**설치를 먼저 실행해야** 합니다.
-
-```bash
-npm.cmd install
-npm.cmd test          # Vitest — 핵심 시나리오 테스트
-npm.cmd run build     # Next.js 프로덕션 빌드 (타입 체크 포함)
-npm.cmd run dev        # 개발 서버 — http://localhost:3000
-```
-
-> **이번 구현 세션에서 위 명령을 직접 실행해 확인하지 못했습니다.** 이 작업을 수행한 에이전트 세션의
-> 도구 권한 설정이 `npm`/`npm.cmd` 실행을 차단했기 때문입니다(파일 작성·편집은 허용, 셸에서의 패키지
-> 매니저 실행만 승인 대기 상태로 거부됨). 로컬에서 위 세 명령을 순서대로 실행해 결과를 확인해주세요.
-> 코드는 각 함수·모듈 단위로 手검토했고 타입 흐름을 직접 추적했지만, 실제 `tsc`/`next build`/`vitest`
-> 실행 결과로 최종 확인된 것은 아닙니다.
-
-## 환경 변수
-
-`.env.example`을 복사해 `.env.local`을 만드세요. 모든 값은 비어 있어도 데모 모드로 동작합니다.
-
-| 변수 | 설명 | 기본값 |
-|---|---|---|
-| `AI_PROVIDER` | `demo`(외부 호출 없음) 또는 `gemini` | `demo` |
-| `GEMINI_API_KEY` | Gemini 사용 시에만 필요. 없으면 `gemini` 모드라도 호출 시 오류로 안내 | (비움) |
-| `GEMINI_MODEL` | Gemini 모델 식별자. 최신 값은 Google 공식 문서에서 확인 후 설정 | (비움) |
-| `DATABASE_PATH` | SQLite 파일 경로 | `data/ai-inbox.sqlite` |
-| `SESSION_COOKIE_NAME` | 세션 쿠키 이름 | `ai_inbox_session` |
-| `SESSION_TTL_SECONDS` | 세션 만료(초) | `86400` (24시간) |
-
-## AI 연결 상태 — 정직하게 밝힙니다
-
-- 기본 `AI_PROVIDER=demo`는 **외부 AI를 호출하지 않는 정규식/키워드 기반의 제한된 규칙 엔진**입니다.
-  화면에도 "데모 분석(제한된 규칙 기반)"이라고 표시하며, 일반적인 AI처럼 모든 문장을 이해한다고
-  주장하지 않습니다. 데모 예시 3개(기획서 6장) 및 그와 비슷한 구조의 문장(예: "OO 김과장입니다.
-  20일까지 300만원 송금 부탁드립니다.")에 맞춰 만들었고, 이 패턴에서 벗어난 자유 문장은 잘못
-  해석되거나 "확인 필요"로 넘어갈 수 있습니다.
-- `src/lib/ai/gemini.ts`에 Gemini REST API를 호출하는 서버 전용 어댑터를 **구현**해 두었지만, 이번
-  세션에서 실제로 호출한 적은 없습니다. `AI_PROVIDER=gemini`로 바꾸고 `GEMINI_API_KEY`·`GEMINI_MODEL`을
-  채워야만 활성화됩니다 — 이는 API 비용이 발생하는 결정이므로 사용자가 직접 켜야 합니다.
-- `GEMINI_MODEL`은 하드코딩하지 않았습니다. Google의 최신 모델 식별자는 시점에 따라 바뀌므로, 공식
-  문서에서 현재 값을 확인해 환경 변수로 넣어주세요.
-
-## 데이터 보관 정책 (구현된 범위)
-
-- 원문(`rawText`)은 분석 요청을 처리하는 동안 서버 메모리에서만 사용되고, 어떤 테이블에도 저장하지
-  않습니다. `proposals.extracted_fields`에도 구조화된 필드만 JSON으로 저장하고 원문 전체를 담지 않습니다.
-- 브라우저에서도 원문을 `localStorage` 등 영구 저장소에 쓰지 않습니다. 방금 분석한 원문은 같은 화면
-  세션(입력 → 확인) 동안만 React 상태로 보관되고, 나중에 "확인 필요" 목록에서 다시 열람하는
-  제안(`/proposals/[id]`)에는 원문이 없고 구조화된 이력만 보여줍니다.
-- 세션은 httpOnly 쿠키(`ai_inbox_session`)로 식별하며 기본 24시간 후 만료됩니다. 만료된 세션은 다음
-  요청 시 자동으로 삭제됩니다. 사이드바의 "데모 데이터 삭제" 버튼으로 즉시 전체 삭제도 가능합니다
-  (`DELETE /api/session` — 관계·담당자·업무·제안·이력을 한 트랜잭션으로 삭제).
-- 이 정책은 **이번 구현 범위 내에서 실제로 그렇게 동작한다는 뜻**이며, 암호화·백업 삭제 주기 등
-  공개 운영에 필요한 추가 조치(기획서 13.2절)는 별도로 구성해야 합니다. 전송 구간 암호화(HTTPS)는
-  배포 환경(리버스 프록시/호스팅)이 책임지며 이 앱 코드가 자체 구현하지 않습니다.
-
-## 데모로 확인 가능한 것 / 안 되는 것
-
-데모(`AI_PROVIDER=demo`)만으로 저장 → 관계 연결 → 변경 추적 → 확인 → 완료까지 전체 흐름을 검증할
-수 있습니다. `/input` 페이지 상단의 예시 칩 3개가 기획서 6장의 시나리오(김과장 최초 요청 → 이대리
-마감 변경 → 잠정적인 24일 변경)를 그대로 채워줍니다.
-
-제외한 범위(기획서 5.3절과 동일):
-
-- 이미지·PDF 입력, 외부 연동(Gmail/Calendar/Drive/Outlook/카카오톡), 모바일 OS 공유하기, Push 알림, 팀 협업
-- 한 입력에 여러 요청이 섞여 있을 때 자동으로 분리하는 기능(단일 요청 기준으로 동작하며, 여러 건이
-  섞이면 첫 번째로 인식되는 요청 위주로 해석됩니다)
-- 통화는 KRW만 정식 지원합니다. 외화 표현은 금액을 임의로 원화 환산하지 않고 "확인 필요"로 보냅니다
-
-## 배포 시 필요한 지속 볼륨
-
-`DATABASE_PATH`가 가리키는 SQLite 파일(기본 `data/ai-inbox.sqlite`)은 컨테이너/서버의 **영구 디스크**에
-있어야 합니다. 스테이트리스 컨테이너를 재배포마다 새로 만드는 환경(예: 매 배포마다 파일시스템이
-초기화되는 서버리스)에서는 데이터가 사라지므로, 지속 볼륨을 마운트하거나 재시작 시에도 유지되는
-디스크 경로를 `DATABASE_PATH`로 지정해야 합니다. 이 리포지토리는 실제 배포·호스팅을 수행하지
-않았습니다.
-
-## 프로젝트 구조
-
-```
-src/app/            페이지(App Router)와 API 라우트
-src/components/      클라이언트 UI 컴포넌트
-src/lib/             도메인 로직 — db, judge(판단 규칙), apply(결정 처리), ai(제공자), repo/(데이터 접근)
-tests/               Vitest 테스트 (핵심 변경/잠정표현/복수후보/과거입력/세션격리/중복반영/버전충돌/완료·되돌리기/삭제)
-docs/implementation-contract.md  구현 계약 문서(타입/API/저장 판단 규칙)
-```
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Zod 4 · libSQL(`@libsql/client`, 로컬 파일 / Turso) · unpdf · Vitest

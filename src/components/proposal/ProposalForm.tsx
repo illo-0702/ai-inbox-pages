@@ -107,7 +107,10 @@ export function ProposalForm({
   const needsIntentGate =
     action === "update" &&
     !!task &&
-    (reasonCodes.includes("intent_unclear") || reasonCodes.includes("no_changes"));
+    (reasonCodes.includes("intent_unclear") ||
+      reasonCodes.includes("no_changes") ||
+      // 완료된 업무에 대한 후속 요청: 기존 업무 수정인지 새 업무인지 사용자가 고른다 (기획서 10장)
+      reasonCodes.includes("task_completed"));
 
   // 업무 선택 라디오에 올릴 후보 목록.
   // - needsIntentGate: 자동 매칭된 그 업무 한 건만 (사용자가 "새 업무로 등록"과 비교해 고르게)

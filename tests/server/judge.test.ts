@@ -235,6 +235,22 @@ describe("judge — T19 완료 업무 후속 변경", () => {
     expect(draft.judgment).toBe("needs_check");
     expect(draft.reasonCodes).toContain("task_completed");
   });
+
+  it("금액으로 완료 업무를 가리키면 금액이 다른 미완료 업무에 연결하지 않는다 (잘못된 병합 방지)", () => {
+    const doneTask = taskFixture({ id: "task-done", amount: 3_500_000, dueDate: "2026-09-22", status: "done" });
+    const openTask = taskFixture({ id: "task-open", amount: 5_000_000, dueDate: "2026-09-30" });
+    const extracted = baseExtracted({
+      organization: "A창호",
+      kind: "remittance",
+      amount: 3_500_000,
+      dueDate: "2026-09-29",
+      intent: "change",
+    });
+    const draft = judge(extracted, RECEIVED_0919, { relationships: [A_CHANGHO], tasks: [doneTask, openTask] }, 0);
+    expect(draft.task?.id).toBe("task-done");
+    expect(draft.judgment).toBe("needs_check");
+    expect(draft.reasonCodes).toContain("task_completed");
+  });
 });
 
 describe("judge — 기획서 6.2 보강 (intent 오분류 방어)", () => {

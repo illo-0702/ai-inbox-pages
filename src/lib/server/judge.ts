@@ -240,7 +240,14 @@ export function judge(
       }
     }
 
-    const sameAmountCandidates = extracted.amount !== null ? candidates.filter((t) => t.amount === extracted.amount) : [];
+    // 금액이 명시되면 완료 업무까지 포함해 같은 금액의 업무를 먼저 찾는다(미완료 우선).
+    // 완료된 350만원 건을 가리키는 후속 메시지가 금액이 다른 미완료 건에 연결되는 잘못된 병합을 막는다(T19).
+    const sameAmountAll =
+      extracted.amount !== null
+        ? context.tasks.filter((t) => t.relationshipId === rel.id && kindMatches(t) && t.amount === extracted.amount)
+        : [];
+    const sameAmountOpen = sameAmountAll.filter((t) => t.status === "open");
+    const sameAmountCandidates = sameAmountOpen.length > 0 ? sameAmountOpen : sameAmountAll;
 
     if (wantsCreate) {
       if (extracted.amount === null) {
