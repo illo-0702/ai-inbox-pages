@@ -42,6 +42,9 @@ interface ProposalFormProps {
   receivedAtDate: DateString;
   submitting: boolean;
   onDecide: (payload: ProposalDecidePayload) => void;
+  /** 이미 pending으로 저장된 항목(예: /proposals/[id])일 때 "나중에 확인"을 defer API 재호출 대신
+   *  단순 이동으로 대체한다. 지정하면 버튼 라벨과 동작이 이걸로 바뀐다. */
+  deferAction?: { label: string; onClick: () => void };
 }
 
 function describeTask(t: TaskSnapshot): string {
@@ -81,6 +84,7 @@ export function ProposalForm({
   receivedAtDate,
   submitting,
   onDecide,
+  deferAction,
 }: ProposalFormProps) {
   const [extracted, setExtracted] = useState<ExtractedRequest>(initialExtracted);
   const [fieldsTouched, setFieldsTouched] = useState(false);
@@ -129,6 +133,9 @@ export function ProposalForm({
   }, [filteredTaskCandidates, needsIntentGate]);
 
   const wantsNewTask = taskChoiceId === "new";
+  // 새 업무를 만들 때만 제목을 직접 입력한다. 기존 업무를 갱신할 때는 그 업무의 제목을 그대로 쓴다
+  // (서버도 update에서 title 변경은 비교하지 않음).
+  const titleEditable = action === "create" || wantsNewTask;
   const resolvedTask: TaskSnapshot | null =
     task && !needsIntentGate
       ? task
@@ -210,12 +217,18 @@ export function ProposalForm({
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-[var(--color-text-faint)]">요청 내용</span>
-          <input
-            type="text"
-            value={extracted.title ?? ""}
-            onChange={(e) => editExtracted((v) => ({ ...v, title: e.target.value }))}
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)]"
-          />
+          {titleEditable ? (
+            <input
+              type="text"
+              value={extracted.title ?? ""}
+              onChange={(e) => editExtracted((v) => ({ ...v, title: e.target.value }))}
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)]"
+            />
+          ) : (
+            <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text-muted)]">
+              {resolvedTask?.title ?? extracted.title ?? "-"}
+            </p>
+          )}
         </label>
 
         <label className="flex flex-col gap-1">
@@ -265,17 +278,20 @@ export function ProposalForm({
             <fieldset className="mt-1 flex flex-col gap-1.5">
               <legend className="sr-only">이 담당자는 어느 관계에 속하나요?</legend>
               {relationshipCandidates.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                <label key={c.id} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
                   <input
                     type="radio"
                     name="relationship-choice"
                     checked={relationshipChoice?.type === "existing" && relationshipChoice.id === c.id}
                     onChange={() => setRelationshipChoice({ type: "existing", id: c.id })}
+                    className="mt-0.5 shrink-0"
                   />
-                  기존 관계 {c.name}
-                  {c.contacts.length > 0 && (
-                    <span className="text-xs text-[var(--color-text-faint)]">({c.contacts.join(", ")})</span>
-                  )}
+                  <span>
+                    기존 관계 {c.name}
+                    {c.contacts.length > 0 && (
+                      <span className="text-xs text-[var(--color-text-faint)]"> ({c.contacts.join(", ")})</span>
+                    )}
+                  </span>
                 </label>
               ))}
               <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
@@ -331,14 +347,15 @@ export function ProposalForm({
             <fieldset className="mt-1 flex flex-col gap-1.5">
               <legend className="sr-only">어느 업무에 대한 내용인가요?</legend>
               {filteredTaskCandidates.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                <label key={c.id} className="flex items-start gap-2 text-sm text-[var(--color-text)]">
                   <input
                     type="radio"
                     name="task-choice"
                     checked={taskChoiceId === c.id}
                     onChange={() => setTaskChoiceId(c.id)}
+                    className="mt-0.5 shrink-0"
                   />
-                  {needsIntentGate ? `기존 업무에 반영: ${describeTask(c)}` : describeTask(c)}
+                  <span>{needsIntentGate ? `기존 업무에 반영: ${describeTask(c)}` : describeTask(c)}</span>
                 </label>
               ))}
               <label className="flex items-center gap-2 text-sm text-[var(--color-text)]">
@@ -402,10 +419,11 @@ export function ProposalForm({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => submit("defer")}
-                loading={submitting}
+                onClick={deferAction ? deferAction.onClick : () => submit("defer")}
+                disabled={submitting}
+                loading={!deferAction && submitting}
               >
-                나중에 확인
+                {deferAction ? deferAction.label : "나중에 확인"}
               </Button>
               <Button
                 type="button"

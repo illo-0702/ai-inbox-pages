@@ -11,3 +11,13 @@
 - 동시에 같은 파일을 수정하지 않는다. 병렬 변경은 별도 worktree로 격리한다.
 - 기준 기획서: `AI_Championship_2026_서비스_기획서.md`. 핵심은 관계 연결·변경 추적·현재 유효 상태이며 장기 기능을 MVP에 임의 추가하지 않는다.
 - 자율주행은 사용량 한도 증가나 자동 예약을 뜻하지 않는다. 사용자 요청 없는 결제·크레딧 소비·외부 전송은 하지 않는다.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

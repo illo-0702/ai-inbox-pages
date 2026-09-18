@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type { TaskSnapshot, UserDecision } from "@/lib/types";
 import { seoulDateOf } from "@/lib/time";
 import {
@@ -31,6 +31,7 @@ type ViewState =
 export default function ProposalDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
 
   const [data, setData] = useState<ProposalDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,6 +148,7 @@ export default function ProposalDetailPage() {
             receivedAtDate={seoulDateOf(data.receivedAt)}
             submitting={view.status === "submitting"}
             onDecide={handleDecide}
+            deferAction={{ label: "목록으로", onClick: () => router.push("/") }}
           />
         </>
       )}

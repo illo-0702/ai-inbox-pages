@@ -100,7 +100,8 @@ function buildReasonText(params: {
 }): string {
   const { action, reasonCodes, extracted, relationshipStatus } = params;
   const has = (c: ReasonCode) => reasonCodes.includes(c);
-  const kindLabel = kindLabelOf(extracted.kind);
+  // 종류가 없는 후속 메시지는 "후속 요청"으로 부른다 ("요청 요청" 같은 중복 방지)
+  const requestPhrase = extracted.kind ? `${KIND_LABEL[extracted.kind]} 요청` : "후속 요청";
   const parts: string[] = [];
 
   if (has("no_actionable_request")) {
@@ -109,7 +110,11 @@ function buildReasonText(params: {
   if (has("relationship_unknown")) {
     parts.push("업체가 확인되지 않아 연결할 관계를 선택해야 해요.");
   } else if (has("multiple_task_candidates")) {
-    parts.push(`같은 업체에 ${kindLabel} 후보 업무가 여러 건이라 선택이 필요해요.`);
+    parts.push(
+      extracted.kind
+        ? `같은 업체에 ${KIND_LABEL[extracted.kind]} 업무가 여러 건이라 어느 건인지 선택이 필요해요.`
+        : "같은 업체에 진행 중인 업무가 여러 건이라 어느 건인지 선택이 필요해요.",
+    );
   } else if (has("task_completed")) {
     parts.push("이미 완료된 업무에 대한 요청이라 확인이 필요해요.");
   } else if (has("older_message")) {
@@ -127,17 +132,17 @@ function buildReasonText(params: {
   } else if (action === "create") {
     parts.push(
       relationshipStatus === "new"
-        ? `새로운 업체의 ${kindLabel} 요청이라 관계를 새로 만듭니다.`
-        : `같은 업체의 ${kindLabel} 요청이며, 새 업무로 등록합니다.`,
+        ? `새로운 업체의 ${requestPhrase}이라 관계를 새로 만듭니다.`
+        : `같은 업체의 ${requestPhrase}이며, 새 업무로 등록합니다.`,
     );
   } else if (action === "update") {
-    parts.push(`같은 업체의 ${kindLabel} 요청이며, 기존 후보가 한 건입니다.`);
+    parts.push(`같은 업체의 ${requestPhrase}이며, 기존 후보가 한 건입니다.`);
   } else {
     parts.push("실행할 요청을 찾지 못했습니다.");
   }
 
   if (extracted.tentative) {
-    parts.push("잠정적인 표현이 있어 현재 마감을 유지합니다.");
+    parts.push("잠정적인 표현이 있어 확정 전까지 현재 조건을 유지합니다.");
   }
   return parts.join(" ");
 }

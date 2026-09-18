@@ -9,7 +9,7 @@ import {
   ApiConflictError,
   ApiRequestError,
 } from "@/lib/client/api";
-import { formatDate, formatKRW } from "@/lib/client/format";
+import { formatDate, formatKRW, josa } from "@/lib/client/format";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -43,6 +43,13 @@ function defaultReceivedAtLocal(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+/** 마운트되는 즉시 부드럽게 스크롤하고 포커스를 옮긴다(요소는 tabIndex=-1로 스크립트 포커스만 허용). */
+function scrollAndFocus(el: HTMLElement | null) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.focus({ preventScroll: true });
 }
 
 type DraftState =
@@ -108,7 +115,8 @@ export default function InputPage() {
     if (decision === "keep") return `${relName}의 기존 조건을 유지했어요.`;
     if (decision === "defer") return `${relName} 항목을 확인 필요로 남겨뒀어요. 관계 상세에서 다시 확인할 수 있어요.`;
     if (draft.action === "create" && task) {
-      return `${relName} ${formatKRW(task.amount, task.currency)} ${task.title}을(를) 새 업무로 등록했어요.`;
+      const todo = `${formatKRW(task.amount, task.currency)} ${task.title}`;
+      return `${relName} ${josa(todo, "을/를")} 새 업무로 등록했어요.`;
     }
     if (task) {
       return `${relName} ${task.title} 마감을 ${formatDate(task.dueDate)}로 바꿨어요.`;
@@ -280,6 +288,13 @@ export default function InputPage() {
       {/* 결과 단계 */}
       {result && (
         <section className="flex flex-col gap-4">
+          <h2
+            ref={scrollAndFocus}
+            tabIndex={-1}
+            className="text-base font-semibold text-[var(--color-text)] outline-none"
+          >
+            분석 결과
+          </h2>
           <div className="flex flex-wrap items-center gap-2">
             {result.provider === "demo" ? (
               <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1 text-xs font-medium text-[var(--color-text-muted)]">
@@ -321,7 +336,9 @@ export default function InputPage() {
                   return (
                     <div key={draft.index} className="flex flex-col gap-2">
                       {state.status === "done" ? (
-                        <ProposalResultSummary message={state.message} onAddAnother={resetAll} />
+                        <div ref={scrollAndFocus} tabIndex={-1} className="outline-none">
+                          <ProposalResultSummary message={state.message} onAddAnother={resetAll} />
+                        </div>
                       ) : (
                         <>
                           {state.status === "conflict" && (

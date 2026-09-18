@@ -134,10 +134,34 @@ export const reasonCodeLabel: Record<ReasonCode, string> = {
   sender_missing: "발신자 정보 없음",
 };
 
-/** 필드 변경 값을 화면 표기용 문자열로 */
+/** 필드 변경 값을 화면 표기용 문자열로. 필드 라벨은 호출부에서 따로 붙이므로 여기서는 중복하지 않는다. */
 export function formatFieldValue(field: FieldName, value: string | number | null): string {
-  if (value === null) return field === "dueDate" ? "마감 미정" : "-";
+  if (value === null) return field === "dueDate" ? "미정" : "-";
   if (field === "dueDate") return formatShort(String(value));
   if (field === "amount") return formatKRW(Number(value));
   return String(value);
+}
+
+// ───────────────────────────── 조사(을/를 등) ─────────────────────────────
+
+const JOSA_PAIRS = {
+  "을/를": ["을", "를"],
+  "이/가": ["이", "가"],
+  "은/는": ["은", "는"],
+  "으로/로": ["으로", "로"],
+} as const;
+
+/**
+ * 한글 받침 유무에 따라 조사를 자동으로 붙인다.
+ * 한글 음절로 끝나지 않는 단어(숫자·영문 등)는 안전하게 "받침 있음"으로 간주한다.
+ * 예: josa("송금", "을/를") → "송금을", josa("A창호", "을/를") → "A창호를"
+ */
+export function josa(word: string, pair: keyof typeof JOSA_PAIRS): string {
+  const [withBatchim, withoutBatchim] = JOSA_PAIRS[pair];
+  const trimmed = word.trim();
+  if (!trimmed) return `${word}${withBatchim}`;
+  const lastCode = trimmed.charCodeAt(trimmed.length - 1);
+  const isHangulSyllable = lastCode >= 0xac00 && lastCode <= 0xd7a3;
+  const hasBatchim = isHangulSyllable ? (lastCode - 0xac00) % 28 !== 0 : true;
+  return `${word}${hasBatchim ? withBatchim : withoutBatchim}`;
 }
