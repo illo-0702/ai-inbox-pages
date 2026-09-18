@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f2f5;
+  --color-border: #e3e5ea;
+  --color-text: #1c1f26;
+  --color-text-muted: #5b6270;
+  --color-text-faint: #8b91a0;
+
+  --color-brand: #3548c7;
+  --color-brand-hover: #2c3aa8;
+  --color-brand-muted: #eceeff;
+  --color-brand-text: #2c3aa8;
+
+  --color-warning: #b8590a;
+  --color-warning-bg: #fdf1e3;
+  --color-warning-border: #f3d6ac;
+
+  --color-success: #157a4a;
+  --color-success-bg: #e8f6ee;
+  --color-success-border: #b9e3cb;
+
+  --color-danger: #c22a2a;
+  --color-danger-bg: #fceaea;
+  --color-danger-border: #f2bcbc;
+
+  --color-focus-ring: #3548c7;
+
+  --shadow-card: 0 1px 2px rgba(20, 22, 30, 0.04), 0 1px 8px rgba(20, 22, 30, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14161c;
+    --color-surface: #1b1e26;
+    --color-surface-muted: #23262f;
+    --color-border: #333744;
+    --color-text: #eef0f4;
+    --color-text-muted: #a7acba;
+    --color-text-faint: #767c8c;
+
+    --color-brand: #7c8bff;
+    --color-brand-hover: #97a3ff;
+    --color-brand-muted: #262b4a;
+    --color-brand-text: #a9b2ff;
+
+    --color-warning: #f0a94e;
+    --color-warning-bg: #3a2c14;
+    --color-warning-border: #5c451f;
+
+    --color-success: #4fce93;
+    --color-success-bg: #163325;
+    --color-success-border: #22553c;
+
+    --color-danger: #f28080;
+    --color-danger-bg: #3a1c1c;
+    --color-danger-border: #5c2a2a;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 8px rgba(0, 0, 0, 0.25);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-muted: var(--color-surface-muted);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-faint: var(--color-text-faint);
+  --color-brand: var(--color-brand);
+  --color-brand-hover: var(--color-brand-hover);
+  --color-brand-muted: var(--color-brand-muted);
+  --color-brand-text: var(--color-brand-text);
+  --color-warning: var(--color-warning);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-warning-border: var(--color-warning-border);
+  --color-success: var(--color-success);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-border: var(--color-success-border);
+  --color-danger: var(--color-danger);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-border: var(--color-danger-border);
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Malgun Gothic",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button {
+  font-family: inherit;
+}
