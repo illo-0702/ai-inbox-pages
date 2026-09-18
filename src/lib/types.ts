@@ -27,6 +27,7 @@ export type ReasonCode =
   | "older_message" // 기존 적용 메시지보다 과거에 받은 메시지
   | "task_completed" // 후보 업무가 이미 완료됨
   | "no_changes" // 기존 값과 동일 → 중복 가능성
+  | "intent_unclear" // 새 요청인지 기존 업무 변경인지 불명확
   | "currency_unclear" // 통화 불명확 (KRW 외)
   | "cancellation_or_removal" // 취소·철회 표현 → 자동 삭제 금지
   | "no_actionable_request" // 실행 요청 없음
@@ -191,6 +192,20 @@ export interface PendingProposalView {
   taskTitle: string | null;
   changes: FieldChange[];
   extracted: ExtractedRequest;
+}
+
+/** GET /api/proposals/:id — 저장된 확인 필요 항목을 다시 결정하기 위한 상세.
+ *  관계·업무 후보와 현재 스냅샷은 조회 시점 기준으로 서버가 재계산한다. */
+export interface ProposalDetailResponse extends PendingProposalView {
+  decision: Decision;
+  action: "create" | "update" | "none";
+  relationship: RelationshipRef | null; // 확정 매칭된 관계(현재 상태)
+  relationshipCandidates: RelationshipRef[];
+  suggestedRelationshipName: string | null;
+  task: TaskSnapshot | null; // 확정 매칭된 업무의 현재 스냅샷(버전 포함)
+  taskCandidates: TaskSnapshot[];
+  /** 현재 업무 값 기준으로 다시 계산한 변경 (저장 당시 값과 다를 수 있음) */
+  currentChanges: FieldChange[];
 }
 
 export type EventType =

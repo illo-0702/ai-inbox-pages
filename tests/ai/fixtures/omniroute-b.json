@@ -1,0 +1,17 @@
+{
+  "requests": [
+    {
+      "senderName": "이대리",
+      "organization": "A창호",
+      "kind": "remittance",
+      "title": "송금",
+      "amount": null,
+      "currency": null,
+      "dueText": "22일까지",
+      "dueDate": "2026-09-22",
+      "tentative": false,
+      "cancellation": false,
+      "intent": "new"
+    }
+  ]
+}
