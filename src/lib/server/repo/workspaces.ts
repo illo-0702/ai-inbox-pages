@@ -1,6 +1,7 @@
 // workspaces 테이블 저장소 — 세션 격리 단위.
 import type { Client } from "@libsql/client";
 import type { Executor } from "../db";
+import { withWriteTransaction } from "../db";
 
 export interface WorkspaceRow {
   id: string;
@@ -38,33 +39,42 @@ export async function insertWorkspaceRow(
   });
 }
 
-export async function updateAnalyzeWindow(
-  db: Executor,
-  id: string,
-  count: number,
-  windowStart: string,
-): Promise<void> {
-  await db.execute({
-    sql: "UPDATE workspaces SET analyze_count = ?, analyze_window_start = ? WHERE id = ?",
-    args: [count, windowStart, id],
-  });
-}
-
 export async function deleteExpiredWorkspaces(db: Executor, nowIso: string): Promise<void> {
   await db.execute({ sql: "DELETE FROM workspaces WHERE expires_at < ?", args: [nowIso] });
 }
 
-/** 작업공간과 그 아래 모든 데이터를 하나의 배치(원자적)로 삭제한다. FK cascade에 의존하지 않는다. */
+/**
+ * 분석 호출 한도를 단일 원자 UPDATE로 검사·소비한다(읽고-쓰는 두 단계로 나누면 동시 요청에서 경합이 생긴다).
+ * window가 만료됐거나(analyze_window_start가 없거나 cutoff보다 과거) 아직 한도 미만이면 허용하고 그 자리에서 카운트를 올린다.
+ * rowsAffected > 0 이면 허용, 0이면 한도 초과(또는 작업공간 없음).
+ */
+export async function tryConsumeAnalyzeQuota(
+  client: Client,
+  workspaceId: string,
+  nowIsoStr: string,
+  cutoffIsoStr: string,
+  limit: number,
+): Promise<boolean> {
+  return withWriteTransaction(client, async (tx) => {
+    const rs = await tx.execute({
+      sql: `UPDATE workspaces
+            SET analyze_count = CASE WHEN analyze_window_start IS NULL OR analyze_window_start < ? THEN 1 ELSE analyze_count + 1 END,
+                analyze_window_start = CASE WHEN analyze_window_start IS NULL OR analyze_window_start < ? THEN ? ELSE analyze_window_start END
+            WHERE id = ? AND (analyze_window_start IS NULL OR analyze_window_start < ? OR analyze_count < ?)`,
+      args: [cutoffIsoStr, cutoffIsoStr, nowIsoStr, workspaceId, cutoffIsoStr, limit],
+    });
+    return rs.rowsAffected > 0;
+  });
+}
+
+/** 작업공간과 그 아래 모든 데이터를 하나의 트랜잭션(원자적)으로 삭제한다. FK cascade에 의존하지 않는다. */
 export async function deleteWorkspaceCascade(client: Client, workspaceId: string): Promise<void> {
-  await client.batch(
-    [
-      { sql: "DELETE FROM events WHERE workspace_id = ?", args: [workspaceId] },
-      { sql: "DELETE FROM proposals WHERE workspace_id = ?", args: [workspaceId] },
-      { sql: "DELETE FROM tasks WHERE workspace_id = ?", args: [workspaceId] },
-      { sql: "DELETE FROM contacts WHERE workspace_id = ?", args: [workspaceId] },
-      { sql: "DELETE FROM relationships WHERE workspace_id = ?", args: [workspaceId] },
-      { sql: "DELETE FROM workspaces WHERE id = ?", args: [workspaceId] },
-    ],
-    "write",
-  );
+  await withWriteTransaction(client, async (tx) => {
+    await tx.execute({ sql: "DELETE FROM events WHERE workspace_id = ?", args: [workspaceId] });
+    await tx.execute({ sql: "DELETE FROM proposals WHERE workspace_id = ?", args: [workspaceId] });
+    await tx.execute({ sql: "DELETE FROM tasks WHERE workspace_id = ?", args: [workspaceId] });
+    await tx.execute({ sql: "DELETE FROM contacts WHERE workspace_id = ?", args: [workspaceId] });
+    await tx.execute({ sql: "DELETE FROM relationships WHERE workspace_id = ?", args: [workspaceId] });
+    await tx.execute({ sql: "DELETE FROM workspaces WHERE id = ?", args: [workspaceId] });
+  });
 }

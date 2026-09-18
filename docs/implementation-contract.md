@@ -117,9 +117,15 @@ events(id TEXT PK, workspace_id TEXT, task_id TEXT, relationship_id TEXT, contac
        field_changes TEXT /*JSON*/, received_at TEXT, applied_at TEXT, actor TEXT)
 ```
 
-- 모든 조회·수정 쿼리에 `workspace_id = ?` 조건. FK는 `ON DELETE CASCADE`로 workspaces에 연결.
+- 모든 조회·수정 쿼리에 `workspace_id = ?` 조건.
+- 삭제는 FK `ON DELETE CASCADE`에 의존하지 않는다. 로컬 libSQL은 커넥션 풀 특성상 `PRAGMA foreign_keys`가
+  모든 커넥션에 일관되게 적용된다고 보장할 수 없어, `deleteWorkspaceCascade`가 하나의 쓰기 트랜잭션 안에서
+  events→proposals→tasks→contacts→relationships→workspaces 순으로 명시적으로 지운다(T18).
 - 원문·dueText 외 원문 조각은 저장하지 않는다. `extracted` JSON에는 `dueText`를 저장하지 않는다(null로 치환).
 - 스키마는 앱 시작 시 `CREATE TABLE IF NOT EXISTS`로 보장(마이그레이션 도구 없음).
+- 모든 쓰기 트랜잭션(`client.transaction("write")`)은 `db.ts`의 `withWriteTransaction(client, fn)`으로 직렬화한다.
+  로컬 libSQL은 실질적으로 커넥션이 하나뿐이라 write 트랜잭션이 겹치면 `TRANSACTION_ACTIVE`로 크래시하기 때문이다.
+  원격(`libsql://`)에서도 그대로 사용해도 무해하다(순서만 보장).
 
 ## 7. 세션
 

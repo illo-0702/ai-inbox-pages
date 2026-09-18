@@ -1,10 +1,16 @@
 // 세션(작업공간) 관리 — 구현 계약 7장.
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { nowIso } from "@/lib/time";
 import type { IsoDateTime } from "@/lib/types";
 import { getDb } from "./db";
-import { deleteWorkspaceCascade, deleteExpiredWorkspaces, getWorkspaceRow, insertWorkspaceRow, updateAnalyzeWindow } from "./repo/workspaces";
+import {
+  deleteExpiredWorkspaces,
+  deleteWorkspaceCascade,
+  getWorkspaceRow,
+  insertWorkspaceRow,
+  tryConsumeAnalyzeQuota,
+} from "./repo/workspaces";
 
 const COOKIE_NAME = "ai_inbox_sid";
 const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS ?? 86400);
@@ -17,6 +23,11 @@ let lastCleanupAt = 0;
 export interface WorkspaceSession {
   id: string;
   expiresAt: IsoDateTime;
+}
+
+/** 계약 7장: 32바이트 난수 base64url. */
+function generateSessionId(): string {
+  return randomBytes(32).toString("base64url");
 }
 
 async function maybeCleanupExpired(): Promise<void> {
@@ -43,9 +54,9 @@ export async function getWorkspace(options: { create?: boolean } = {}): Promise<
   }
   if (!create) return null;
 
-  const id = randomUUID();
+  const id = generateSessionId();
   const createdAt = nowIso();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
+  const expiresAt = nowIso(new Date(Date.now() + SESSION_TTL_SECONDS * 1000));
   await insertWorkspaceRow(db, { id, createdAt, expiresAt });
   store.set(COOKIE_NAME, id, {
     httpOnly: true,
@@ -68,21 +79,13 @@ export async function destroySession(): Promise<void> {
   store.delete(COOKIE_NAME);
 }
 
-/** 세션당 분석 호출 상한(시간당). 초과 시 false. */
+/**
+ * 세션당 분석 호출 상한(시간당). 단일 원자 UPDATE로 검사와 소비를 함께 처리해
+ * 동시 요청 경합(TOCTOU)이 생기지 않게 한다. 초과 시 false.
+ */
 export async function checkAnalyzeRateLimit(workspaceId: string): Promise<boolean> {
   const db = await getDb();
-  const row = await getWorkspaceRow(db, workspaceId);
-  if (!row) return false;
-
-  const now = Date.now();
-  const windowStart = row.analyzeWindowStart ? Date.parse(row.analyzeWindowStart) : NaN;
-  const withinWindow = !Number.isNaN(windowStart) && now - windowStart < HOUR_MS;
-
-  if (!withinWindow) {
-    await updateAnalyzeWindow(db, workspaceId, 1, new Date(now).toISOString());
-    return true;
-  }
-  if (row.analyzeCount >= ANALYZE_RATE_LIMIT_PER_HOUR) return false;
-  await updateAnalyzeWindow(db, workspaceId, row.analyzeCount + 1, row.analyzeWindowStart as string);
-  return true;
+  const now = nowIso();
+  const cutoff = nowIso(new Date(Date.now() - HOUR_MS));
+  return tryConsumeAnalyzeQuota(db, workspaceId, now, cutoff, ANALYZE_RATE_LIMIT_PER_HOUR);
 }

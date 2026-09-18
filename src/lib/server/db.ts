@@ -1,6 +1,6 @@
 // libSQL 클라이언트 싱글톤 + 스키마 보장.
 // 모든 DB 접근은 이 모듈이 만든 client(또는 그 transaction)를 통해서만 이뤄진다.
-import { createClient, type Client, type InStatement, type ResultSet } from "@libsql/client";
+import { createClient, type Client, type InStatement, type ResultSet, type Transaction } from "@libsql/client";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,6 +8,44 @@ import path from "node:path";
 
 /** repo 함수들이 받는 최소 실행기 — Client와 Transaction이 모두 만족한다. */
 export type Executor = { execute(stmt: InStatement): Promise<ResultSet> };
+
+/**
+ * 로컬 libSQL 클라이언트는 실질적으로 커넥션이 하나뿐이라 write 트랜잭션이 겹치면
+ * TRANSACTION_ACTIVE로 크래시한다. 프로세스 내에서 client 하나당 쓰기 트랜잭션을
+ * 프라미스 체인으로 직렬화해 항상 한 번에 하나만 진행되게 한다. 원격(libsql://)에도
+ * 그대로 써도 무해하다(순서만 보장, 의미상 문제 없음).
+ */
+const writeQueues = new WeakMap<Client, Promise<void>>();
+
+export async function withWriteTransaction<T>(client: Client, fn: (tx: Transaction) => Promise<T>): Promise<T> {
+  const previous = writeQueues.get(client) ?? Promise.resolve();
+  let settle: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  writeQueues.set(client, previous.then(() => gate));
+
+  await previous;
+  try {
+    const tx = await client.transaction("write");
+    try {
+      const value = await fn(tx);
+      await tx.commit();
+      return value;
+    } catch (err) {
+      try {
+        if (!tx.closed) await tx.rollback();
+      } catch {
+        // 이미 종료된 트랜잭션이면 무시
+      }
+      throw err;
+    } finally {
+      tx.close();
+    }
+  } finally {
+    settle();
+  }
+}
 
 const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS workspaces (
@@ -110,6 +148,7 @@ async function initDb(): Promise<Client> {
   const client = createClient({
     url,
     authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
+    timeout: 5000,
   });
   await ensureSchema(client);
   return client;
@@ -136,13 +175,13 @@ export async function ensureSchema(client: Client): Promise<void> {
  * 실제로 상태가 공유되는지 확인한 뒤, 안 되면 os.tmpdir() 임시 파일로 대체한다.
  */
 export async function createTestDb(): Promise<Client> {
-  const memClient = createClient({ url: ":memory:" });
+  const memClient = createClient({ url: ":memory:", timeout: 5000 });
   await ensureSchema(memClient);
   if (await supportsCrossCallState(memClient)) return memClient;
   memClient.close();
 
   const tmpFile = path.join(os.tmpdir(), `ai-inbox-test-${randomUUID()}.db`);
-  const fileClient = createClient({ url: `file:${tmpFile}` });
+  const fileClient = createClient({ url: `file:${tmpFile}`, timeout: 5000 });
   await ensureSchema(fileClient);
   return fileClient;
 }

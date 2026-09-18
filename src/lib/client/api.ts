@@ -16,8 +16,12 @@ import type {
   TaskView,
   UserDecision,
 } from "@/lib/types";
+// P1 파일 입력 타입. "@/lib/files/types"는 unpdf 등 서버 전용 패키지를 참조하지 않는 순수 타입 모듈이라
+// 클라이언트 번들에 안전하다(무거운 "@/lib/files/extract" 바렐은 여기서 import하지 않는다).
+import type { CapabilitiesResponse, ExtractFileResponse } from "@/lib/files/types";
 
 export type { ProposalDetailResponse };
+export type { CapabilitiesResponse, ExtractFileResponse };
 
 /** 계약 8장에는 없지만 요청 본문 형태를 명시하기 위한 로컬 타입 */
 export interface AnalyzeRequest {
@@ -147,4 +151,43 @@ export function setTaskStatus(
 
 export function deleteSession(): Promise<{ ok: true }> {
   return request<{ ok: true }>("/api/session", { method: "DELETE" });
+}
+
+/** GET /api/capabilities — PDF·이미지 입력 가능 여부. */
+export function getCapabilities(): Promise<CapabilitiesResponse> {
+  return request<CapabilitiesResponse>("/api/capabilities");
+}
+
+/**
+ * POST /api/extract-file — PDF·이미지에서 텍스트만 추출한다(서버는 파일을 저장하지 않음).
+ * multipart/form-data이므로 공용 request()의 강제 JSON Content-Type을 쓸 수 없어 별도로 호출한다.
+ */
+export async function extractFile(file: File): Promise<ExtractFileResponse> {
+  const form = new FormData();
+  form.append("file", file);
+
+  let res: Response;
+  try {
+    res = await fetch("/api/extract-file", {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+  } catch {
+    throw new ApiRequestError(0, "network_error", "네트워크 연결을 확인해주세요.");
+  }
+
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    // 본문이 없거나 JSON이 아님
+  }
+
+  if (!res.ok) {
+    if (isApiErrorBody(body)) throw new ApiRequestError(res.status, body.error, body.message);
+    throw new ApiRequestError(res.status, "unknown_error", "알 수 없는 오류가 발생했어요.");
+  }
+
+  return body as ExtractFileResponse;
 }

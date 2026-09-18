@@ -1,4 +1,6 @@
 // 결정 적용 — 구현 계약 4장. 하나의 트랜잭션에서 멱등·소유권·버전 충돌을 모두 검증한다.
+// 쓰기 트랜잭션은 withWriteTransaction으로 직렬화한다(로컬 libSQL은 커넥션이 실질적으로 하나뿐이라
+// write 트랜잭션이 겹치면 TRANSACTION_ACTIVE로 크래시한다).
 import type { Client, Transaction } from "@libsql/client";
 import { randomUUID } from "node:crypto";
 import { nowIso } from "@/lib/time";
@@ -12,6 +14,7 @@ import type {
   TaskSnapshot,
   UserDecision,
 } from "@/lib/types";
+import { withWriteTransaction } from "./db";
 import { computeFieldChanges, defaultTitleFor, judge } from "./judge";
 import { upsertContact } from "./repo/contacts";
 import { insertEventRow } from "./repo/events";
@@ -21,7 +24,7 @@ import {
   insertProposalRow,
   updateProposalDecision,
 } from "./repo/proposals";
-import { getRelationshipRow, insertRelationship } from "./repo/relationships";
+import { findRelationshipsByNormalizedName, getRelationshipRow, insertRelationship, touchRelationship } from "./repo/relationships";
 import { getTaskRow, insertTask, toTaskSnapshot, updateTaskFields, updateTaskStatus } from "./repo/tasks";
 import type { TaskRow } from "./repo/tasks";
 import { buildRelationshipRefs, buildTaskSnapshots } from "./queries";
@@ -54,14 +57,6 @@ function mapUserDecisionToDecision(d: UserDecision): Decision {
 function maxIso(a: string | null, b: string): string {
   if (!a) return b;
   return Date.parse(a) >= Date.parse(b) ? a : b;
-}
-
-async function safeRollback(tx: Transaction): Promise<void> {
-  try {
-    if (!tx.closed) await tx.rollback();
-  } catch {
-    // 이미 종료된 트랜잭션이면 무시
-  }
 }
 
 interface ApplyCoreResult {
@@ -97,11 +92,19 @@ async function applyCore(
     relationshipName = row.name;
   } else if (target.relationship && "newName" in target.relationship) {
     if (decision === "apply") {
-      const id = randomUUID();
       const name = target.relationship.newName;
-      await insertRelationship(tx, { id, workspaceId, name, normalizedName: normalizeRelationshipName(name), createdAt: now });
-      relationshipId = id;
-      relationshipName = name;
+      const normalized = normalizeRelationshipName(name);
+      // 같은 이름(정규화 기준)의 관계가 이미 있으면 중복 생성하지 않고 재사용한다.
+      const existing = await findRelationshipsByNormalizedName(tx, workspaceId, normalized);
+      if (existing.length > 0) {
+        relationshipId = existing[0].id;
+        relationshipName = existing[0].name;
+      } else {
+        const id = randomUUID();
+        await insertRelationship(tx, { id, workspaceId, name, normalizedName: normalized, createdAt: now });
+        relationshipId = id;
+        relationshipName = name;
+      }
     } else {
       relationshipName = target.relationship.newName;
     }
@@ -180,10 +183,17 @@ async function applyCore(
       createdAt: now,
     });
   }
+  await touchRelationship(tx, workspaceId, relationshipId, now);
 
   const dueNeedsConfirm = extracted.dueAmbiguous && extracted.dueDate !== null;
   if (dueNeedsConfirm && confirmations.date !== true) {
     throw new ApplyError("date_confirmation_required", "마감 날짜 해석을 확인해주세요.", 400);
+  }
+
+  // 잠정 표현은 확인 없이 기존 업무를 바꾸지 못한다(정책 결정). 새 업무 생성에는 적용하지 않는다.
+  const isExistingTaskUpdate = target.task !== null && target.task !== "new";
+  if (extracted.tentative && isExistingTaskUpdate && confirmations.tentativeAccepted !== true) {
+    throw new ApplyError("tentative_confirmation_required", "잠정적인 변경은 확인 후에 반영할 수 있어요.", 400);
   }
 
   if (target.task === "new") {
@@ -279,8 +289,7 @@ async function applyCore(
 
 /** POST /api/decisions — 새 분석 결과에 대한 결정. 멱등 키: (workspace, analysisId, index). */
 export async function applyDecision(client: Client, workspaceId: string, request: DecideRequest): Promise<DecideResponse> {
-  const tx = await client.transaction("write");
-  try {
+  return withWriteTransaction(client, async (tx) => {
     const existing = await findProposalByIdemKey(tx, workspaceId, request.analysisId, request.index);
     if (existing) {
       let task: TaskSnapshot | null = null;
@@ -288,7 +297,6 @@ export async function applyDecision(client: Client, workspaceId: string, request
         const row = await getTaskRow(tx, workspaceId, existing.taskId);
         if (row) task = toTaskSnapshot(row);
       }
-      await tx.commit();
       return { decision: existing.decision, proposalId: existing.id, task, duplicate: true };
     }
 
@@ -327,14 +335,8 @@ export async function applyDecision(client: Client, workspaceId: string, request
       decidedAt: now,
     });
 
-    await tx.commit();
     return { decision, proposalId, task: outcome.task, duplicate: false };
-  } catch (err) {
-    await safeRollback(tx);
-    throw err;
-  } finally {
-    tx.close();
-  }
+  });
 }
 
 /** POST /api/proposals/:id/decide — 저장된 pending 제안을 처리한다. */
@@ -349,8 +351,7 @@ export async function decidePendingProposal(
     extracted?: ExtractedRequest;
   },
 ): Promise<DecideResponse> {
-  const tx = await client.transaction("write");
-  try {
+  return withWriteTransaction(client, async (tx) => {
     const existing = await getProposalRow(tx, workspaceId, proposalId);
     if (!existing) throw new ApplyError("not_found", "제안을 찾을 수 없습니다.", 404);
     if (existing.decision !== "pending") {
@@ -378,14 +379,8 @@ export async function decidePendingProposal(
       extracted: { ...extracted, dueText: null },
     });
 
-    await tx.commit();
     return { decision, proposalId, task: outcome.task, duplicate: false };
-  } catch (err) {
-    await safeRollback(tx);
-    throw err;
-  } finally {
-    tx.close();
-  }
+  });
 }
 
 /** POST /api/tasks/:id/status — 완료/되돌리기. */
@@ -396,8 +391,7 @@ export async function setTaskStatus(
   status: "open" | "done",
   expectedVersion: number,
 ): Promise<TaskSnapshot> {
-  const tx = await client.transaction("write");
-  try {
+  return withWriteTransaction(client, async (tx) => {
     const row = await getTaskRow(tx, workspaceId, taskId);
     if (!row) throw new ApplyError("not_found", "업무를 찾을 수 없습니다.", 404);
     if (row.version !== expectedVersion) throw new VersionConflictError(toTaskSnapshot(row));
@@ -430,14 +424,9 @@ export async function setTaskStatus(
       receivedAt: null,
       appliedAt: now,
     });
+    await touchRelationship(tx, workspaceId, row.relationshipId, now);
 
     const updated = await getTaskRow(tx, workspaceId, taskId);
-    await tx.commit();
     return toTaskSnapshot(updated as TaskRow);
-  } catch (err) {
-    await safeRollback(tx);
-    throw err;
-  } finally {
-    tx.close();
-  }
+  });
 }

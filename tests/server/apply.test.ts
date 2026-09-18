@@ -196,7 +196,7 @@ describe("apply — T04/T05 잠정 변경의 기존 유지 / 나중에 확인", 
     const decided = await decidePendingProposal(db, workspaceId, deferred.proposalId, {
       decision: "apply",
       target: { relationship: { id: relationshipId }, task: { id: taskId, expectedVersion: 1 } },
-      confirmations: {},
+      confirmations: { tentativeAccepted: true },
     });
     expect(decided.decision).toBe("applied");
     expect(decided.task?.dueDate).toBe("2026-09-24");
@@ -657,5 +657,155 @@ describe("apply — 선택한 업무가 선택한 관계 소속이 아니면 거
         confirmations: {},
       }),
     ).rejects.toMatchObject({ code: "invalid_request", status: 400 });
+  });
+});
+
+describe("apply — 동시 요청 처리 (쓰기 트랜잭션 직렬화)", () => {
+  it("analysisId가 다른 두 요청을 동시에 보내면 둘 다 성공한다", async () => {
+    const { db, workspaceId } = await ws();
+    const reqA: DecideRequest = {
+      analysisId: "c1",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "remittance", amount: 3_000_000, currency: "KRW", dueDate: "2026-09-20", intent: "new" }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    };
+    const reqB: DecideRequest = {
+      analysisId: "c2",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "B전자", kind: "remittance", amount: 1_000_000, currency: "KRW", dueDate: "2026-09-25", intent: "new" }),
+      target: { relationship: { newName: "B전자" }, task: "new" },
+      confirmations: {},
+    };
+
+    const [resA, resB] = await Promise.all([applyDecision(db, workspaceId, reqA), applyDecision(db, workspaceId, reqB)]);
+    expect(resA.decision).toBe("applied");
+    expect(resB.decision).toBe("applied");
+    expect(resA.duplicate).toBe(false);
+    expect(resB.duplicate).toBe(false);
+
+    const dash = await getDashboard(db, workspaceId);
+    expect(dash.openTasks).toHaveLength(2);
+  });
+
+  it("같은 analysisId+index를 동시에 보내면 하나만 적용되고 나머지는 duplicate다", async () => {
+    const { db, workspaceId } = await ws();
+    const req: DecideRequest = {
+      analysisId: "c3",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "remittance", amount: 3_000_000, currency: "KRW", dueDate: "2026-09-20", intent: "new" }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    };
+
+    const [res1, res2] = await Promise.all([applyDecision(db, workspaceId, req), applyDecision(db, workspaceId, req)]);
+    const results = [res1, res2];
+    expect(results.filter((r) => r.duplicate)).toHaveLength(1);
+    expect(results.filter((r) => !r.duplicate)).toHaveLength(1);
+    expect(res1.proposalId).toBe(res2.proposalId);
+    expect(res1.task?.id).toBe(res2.task?.id);
+
+    const dash = await getDashboard(db, workspaceId);
+    expect(dash.openTasks).toHaveLength(1);
+    const detail = await getRelationshipDetail(db, workspaceId, res1.task!.relationshipId);
+    expect(detail?.events.filter((e) => e.eventType === "task_created")).toHaveLength(1);
+  });
+});
+
+describe("apply — 같은 이름의 새 관계는 중복 생성하지 않는다", () => {
+  it("서로 다른 analysisId로 같은 newName을 두 번 적용해도 관계는 하나다", async () => {
+    const { db, workspaceId } = await ws();
+    await applyDecision(db, workspaceId, {
+      analysisId: "d1",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "remittance", amount: 3_000_000, currency: "KRW", dueDate: "2026-09-20", intent: "new" }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    });
+    await applyDecision(db, workspaceId, {
+      analysisId: "d2",
+      index: 0,
+      receivedAt: RECEIVED_0919,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "document", title: "서류", intent: "new" }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    });
+    const relationships = await getRelationships(db, workspaceId);
+    expect(relationships).toHaveLength(1);
+    expect(relationships[0].openTaskCount).toBe(2);
+  });
+});
+
+describe("apply — 잠정 변경은 확인 없이 반영되지 않는다 (정책 결정)", () => {
+  it("tentative=true인 기존 업무 변경은 tentativeAccepted 없이는 거부되고, 있으면 반영된다", async () => {
+    const { db, workspaceId } = await ws();
+    const created = await applyDecision(db, workspaceId, {
+      analysisId: "e1",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "remittance", amount: 3_000_000, currency: "KRW", dueDate: "2026-09-20", intent: "new" }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    });
+    const relationshipId = created.task!.relationshipId;
+    const taskId = created.task!.id;
+
+    await expect(
+      applyDecision(db, workspaceId, {
+        analysisId: "e2",
+        index: 0,
+        receivedAt: RECEIVED_0919,
+        decision: "apply",
+        extracted: baseExtracted({ organization: "A창호", kind: "remittance", dueDate: "2026-09-24", tentative: true, intent: "change" }),
+        target: { relationship: { id: relationshipId }, task: { id: taskId, expectedVersion: 1 } },
+        confirmations: {},
+      }),
+    ).rejects.toMatchObject({ code: "tentative_confirmation_required", status: 400 });
+
+    const dashBefore = await getDashboard(db, workspaceId);
+    expect(dashBefore.openTasks[0].dueDate).toBe("2026-09-20"); // 무변경
+
+    const applied = await applyDecision(db, workspaceId, {
+      analysisId: "e3",
+      index: 0,
+      receivedAt: RECEIVED_0919,
+      decision: "apply",
+      extracted: baseExtracted({ organization: "A창호", kind: "remittance", dueDate: "2026-09-24", tentative: true, intent: "change" }),
+      target: { relationship: { id: relationshipId }, task: { id: taskId, expectedVersion: 1 } },
+      confirmations: { tentativeAccepted: true },
+    });
+    expect(applied.task?.dueDate).toBe("2026-09-24");
+  });
+
+  it("잠정 표현이 있어도 새 업무 생성(target.task='new')은 막지 않는다", async () => {
+    const { db, workspaceId } = await ws();
+    const res = await applyDecision(db, workspaceId, {
+      analysisId: "e4",
+      index: 0,
+      receivedAt: RECEIVED_0918,
+      decision: "apply",
+      extracted: baseExtracted({
+        organization: "A창호",
+        kind: "remittance",
+        amount: 1_000_000,
+        currency: "KRW",
+        dueDate: "2026-09-20",
+        tentative: true,
+        intent: "new",
+      }),
+      target: { relationship: { newName: "A창호" }, task: "new" },
+      confirmations: {},
+    });
+    expect(res.decision).toBe("applied");
   });
 });
