@@ -4,7 +4,7 @@ import type { RelationshipSummary } from "@/lib/types";
 export function RelationshipCard({ relationship }: { relationship: RelationshipSummary }) {
   return (
     <Link
-      href={`/relationships/${relationship.id}`}
+      href={`/relationships/detail?id=${relationship.id}`}
       className="flex flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-card)] transition-colors hover:border-[var(--color-brand)] sm:p-5"
     >
       <div className="flex items-center justify-between gap-2">

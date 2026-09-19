@@ -5,7 +5,7 @@ import { JudgmentBadge } from "@/components/ui/Badge";
 export function PendingItem({ item }: { item: PendingProposalView }) {
   return (
     <Link
-      href={`/proposals/${item.id}`}
+      href={`/proposals/detail?id=${item.id}`}
       className="flex flex-col gap-1.5 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-3.5 transition-colors hover:bg-[var(--color-surface)] sm:flex-row sm:items-center sm:justify-between sm:gap-3"
     >
       <div className="flex flex-col gap-1">

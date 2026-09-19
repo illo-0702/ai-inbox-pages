@@ -1,8 +1,8 @@
 {
-  "name": "ai-inbox",
+  "name": "ai-inbox-pages",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Inbox - 흩어진 연락을 지금 해야 할 일로. AI Championship 2026 MVP.",
+  "description": "AI Inbox — 흩어진 연락을 지금 해야 할 일로 (정적 데모, GitHub Pages)",
   "type": "module",
   "engines": {
     "node": ">=20.9.0"
@@ -16,12 +16,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@libsql/client": "^0.18.0",
     "next": "^16.3.5",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "unpdf": "^1.8.1",
-    "zod": "^4.6.5"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

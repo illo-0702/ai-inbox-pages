@@ -23,7 +23,7 @@ export function TaskCard({
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-card)] sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link
-          href={`/relationships/${task.relationshipId}`}
+          href={`/relationships/detail?id=${task.relationshipId}`}
           className="text-sm font-semibold text-[var(--color-brand-text)] hover:underline"
         >
           {task.relationshipName}
@@ -60,7 +60,7 @@ export function TaskCard({
           <span />
         )}
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <Link href={`/relationships/${task.relationshipId}`} className="sm:w-auto">
+          <Link href={`/relationships/detail?id=${task.relationshipId}`} className="sm:w-auto">
             <Button type="button" variant="secondary" className="w-full">
               상세 보기
             </Button>

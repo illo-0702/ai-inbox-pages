@@ -1,29 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getDashboard, deleteSession, ApiRequestError } from "@/lib/client/api";
-import { formatDateTime } from "@/lib/client/format";
+import { useState } from "react";
+import { deleteSession, ApiRequestError } from "@/lib/client/api";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function Footer() {
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getDashboard()
-      .then((res) => {
-        if (!cancelled) setExpiresAt(res.sessionExpiresAt);
-      })
-      .catch(() => {
-        // 세션 안내는 부가 정보이므로 실패해도 화면을 막지 않는다
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleDelete() {
     setDeleting(true);
@@ -42,9 +26,8 @@ export function Footer() {
     <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-6 text-xs text-[var(--color-text-faint)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p>
-          {expiresAt
-            ? `이 데모 데이터는 ${formatDateTime(expiresAt)}에 자동 삭제됩니다.`
-            : "이 데모 데이터는 일정 시간 후 자동 삭제됩니다."}
+          정적 데모입니다. 모든 데이터는 이 브라우저에만(localStorage) 저장되고 서버로 전송되지 않아요.
+          다른 기기·브라우저에는 보이지 않습니다.
         </p>
         <div className="flex items-center gap-3">
           {error && <span className="text-[var(--color-danger)]">{error}</span>}

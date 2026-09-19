@@ -1,8 +1,8 @@
-// /api/* 호출 래퍼. 쿠키 세션 기반이므로 credentials: "same-origin"을 기본으로 쓴다.
-// 계약: docs/implementation-contract.md 8장. 타입은 src/lib/types.ts를 따른다.
+// GitHub Pages(정적) 버전: 서버 API 대신 이 브라우저의 localStorage(src/lib/local/store.ts)를 호출한다.
+// 함수 이름·시그니처는 서버 버전(docs/implementation-contract.md 8장)과 동일하게 맞춰
+// 화면 컴포넌트를 건드리지 않는다. 오류 형태(ApiRequestError/ApiConflictError)도 그대로 유지한다.
 import type {
   AnalyzeResponse,
-  ConflictResponse,
   DecideRequest,
   DecideResponse,
   DashboardResponse,
@@ -16,14 +16,25 @@ import type {
   TaskView,
   UserDecision,
 } from "@/lib/types";
-// P1 파일 입력 타입. "@/lib/files/types"는 unpdf 등 서버 전용 패키지를 참조하지 않는 순수 타입 모듈이라
-// 클라이언트 번들에 안전하다(무거운 "@/lib/files/extract" 바렐은 여기서 import하지 않는다).
-import type { CapabilitiesResponse, ExtractFileResponse } from "@/lib/files/types";
+import { FileExtractError, type CapabilitiesResponse, type ExtractFileResponse } from "@/lib/files/types";
+import {
+  analyzeLocal,
+  decideLocal,
+  decidePendingLocal,
+  deleteAllLocal,
+  getDashboardLocal,
+  getProposalViewLocal,
+  getRelationshipDetailLocal,
+  getRelationshipsLocal,
+  LocalStoreError,
+  LocalVersionConflictError,
+  setTaskStatusLocal,
+} from "@/lib/local/store";
+import { extractPdfTextInBrowser } from "@/lib/files/pdf-browser";
 
 export type { ProposalDetailResponse };
 export type { CapabilitiesResponse, ExtractFileResponse };
 
-/** 계약 8장에는 없지만 요청 본문 형태를 명시하기 위한 로컬 타입 */
 export interface AnalyzeRequest {
   text: string;
   receivedAt: IsoDateTime;
@@ -38,7 +49,6 @@ export interface ProposalDecideRequest {
   extracted?: ExtractedRequest;
 }
 
-/** ApiError 형태를 유지하는 오류. 409 conflict는 ApiConflictError로 세분화한다. */
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
@@ -59,135 +69,90 @@ export class ApiConflictError extends ApiRequestError {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
+/** 동기 로컬 함수를 이 파일의 공용 오류 형태로 감싼다. 컴포넌트는 실제 API였을 때와 동일하게 처리한다. */
+async function run<T>(fn: () => T): Promise<T> {
+  // 로컬 저장소 접근은 동기지만, 화면이 "저장 중…" 등 실제 API처럼 다루도록 한 틱 미룬다.
+  await Promise.resolve();
   try {
-    res = await fetch(path, {
-      credentials: "same-origin",
-      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-      ...init,
-    });
-  } catch {
-    throw new ApiRequestError(0, "network_error", "네트워크 연결을 확인해주세요.");
+    return fn();
+  } catch (err) {
+    if (err instanceof LocalVersionConflictError) throw new ApiConflictError(err.latest);
+    if (err instanceof LocalStoreError) throw new ApiRequestError(err.status, err.code, err.message);
+    throw new ApiRequestError(500, "internal_error", "처리 중 오류가 발생했어요.");
   }
-
-  if (res.status === 204) return undefined as T;
-
-  let body: unknown = null;
-  try {
-    body = await res.json();
-  } catch {
-    // 본문이 없거나 JSON이 아님
-  }
-
-  if (!res.ok) {
-    if (res.status === 409 && isConflictBody(body)) {
-      throw new ApiConflictError(body.latest);
-    }
-    if (isApiErrorBody(body)) {
-      throw new ApiRequestError(res.status, body.error, body.message);
-    }
-    throw new ApiRequestError(res.status, "unknown_error", "알 수 없는 오류가 발생했어요.");
-  }
-
-  return body as T;
-}
-
-function isApiErrorBody(v: unknown): v is { error: string; message: string } {
-  return !!v && typeof v === "object" && "error" in v && "message" in v;
-}
-
-function isConflictBody(v: unknown): v is ConflictResponse {
-  return !!v && typeof v === "object" && (v as ConflictResponse).error === "version_conflict";
 }
 
 export function analyze(req: AnalyzeRequest): Promise<AnalyzeResponse> {
-  return request<AnalyzeResponse>("/api/analyze", {
-    method: "POST",
-    body: JSON.stringify(req),
-  });
+  return run(() => analyzeLocal(req));
 }
 
 export function decide(req: DecideRequest): Promise<DecideResponse> {
-  return request<DecideResponse>("/api/decisions", {
-    method: "POST",
-    body: JSON.stringify(req),
-  });
+  return run(() => decideLocal(req));
 }
 
 export function getDashboard(): Promise<DashboardResponse> {
-  return request<DashboardResponse>("/api/dashboard");
+  return run(() => getDashboardLocal());
 }
 
 export function getRelationships(): Promise<RelationshipSummary[]> {
-  return request<RelationshipSummary[]>("/api/relationships");
+  return run(() => getRelationshipsLocal());
 }
 
 export function getRelationshipDetail(id: string): Promise<RelationshipDetail> {
-  return request<RelationshipDetail>(`/api/relationships/${encodeURIComponent(id)}`);
-}
-
-export function getProposal(id: string): Promise<ProposalDetailResponse> {
-  return request<ProposalDetailResponse>(`/api/proposals/${encodeURIComponent(id)}`);
-}
-
-export function decideProposal(id: string, req: ProposalDecideRequest): Promise<DecideResponse> {
-  return request<DecideResponse>(`/api/proposals/${encodeURIComponent(id)}/decide`, {
-    method: "POST",
-    body: JSON.stringify(req),
+  return run(() => {
+    const detail = getRelationshipDetailLocal(id);
+    if (!detail) throw new LocalStoreError("not_found", "관계를 찾을 수 없습니다.", 404);
+    return detail;
   });
 }
 
-export function setTaskStatus(
-  id: string,
-  status: TaskStatus,
-  expectedVersion: number,
-): Promise<TaskView> {
-  return request<TaskView>(`/api/tasks/${encodeURIComponent(id)}/status`, {
-    method: "POST",
-    body: JSON.stringify({ status, expectedVersion }),
+export function getProposal(id: string): Promise<ProposalDetailResponse> {
+  return run(() => {
+    const view = getProposalViewLocal(id);
+    if (!view) throw new LocalStoreError("not_found", "제안을 찾을 수 없습니다.", 404);
+    return view;
+  });
+}
+
+export function decideProposal(id: string, req: ProposalDecideRequest): Promise<DecideResponse> {
+  return run(() => decidePendingLocal(id, req));
+}
+
+export function setTaskStatus(id: string, status: TaskStatus, expectedVersion: number): Promise<TaskView> {
+  return run(() => {
+    setTaskStatusLocal(id, status, expectedVersion);
+    const detail = getDashboardLocal();
+    const found = [...detail.openTasks, ...detail.doneTasks].find((t) => t.id === id);
+    if (!found) throw new LocalStoreError("not_found", "업무를 찾을 수 없습니다.", 404);
+    return found;
   });
 }
 
 export function deleteSession(): Promise<{ ok: true }> {
-  return request<{ ok: true }>("/api/session", { method: "DELETE" });
+  return run(() => {
+    deleteAllLocal();
+    return { ok: true as const };
+  });
 }
 
-/** GET /api/capabilities — PDF·이미지 입력 가능 여부. */
+/** 이 버전은 서버 AI를 연결하지 않으므로 이미지 인식은 항상 꺼져 있다. PDF는 브라우저에서 직접 읽는다. */
 export function getCapabilities(): Promise<CapabilitiesResponse> {
-  return request<CapabilitiesResponse>("/api/capabilities");
+  return Promise.resolve({ pdfInput: true, imageInput: false });
 }
 
-/**
- * POST /api/extract-file — PDF·이미지에서 텍스트만 추출한다(서버는 파일을 저장하지 않음).
- * multipart/form-data이므로 공용 request()의 강제 JSON Content-Type을 쓸 수 없어 별도로 호출한다.
- */
+/** PDF에서 글자를 추출한다. 서버가 없으므로 브라우저(pdfjs)에서 직접 처리하고, 어디에도 저장하지 않는다. */
 export async function extractFile(file: File): Promise<ExtractFileResponse> {
-  const form = new FormData();
-  form.append("file", file);
-
-  let res: Response;
+  const kind = file.type === "application/pdf" ? "pdf" : null;
+  if (!kind) {
+    throw new ApiRequestError(415, "unsupported_file", "PDF만 지원해요. 텍스트를 직접 붙여넣어도 돼요.");
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    throw new ApiRequestError(413, "file_too_large", "4MB 이하 파일만 지원해요.");
+  }
   try {
-    res = await fetch("/api/extract-file", {
-      method: "POST",
-      credentials: "same-origin",
-      body: form,
-    });
-  } catch {
-    throw new ApiRequestError(0, "network_error", "네트워크 연결을 확인해주세요.");
+    return await extractPdfTextInBrowser(file);
+  } catch (err) {
+    if (err instanceof FileExtractError) throw new ApiRequestError(err.status, err.code, err.message);
+    throw new ApiRequestError(400, "unreadable_file", "파일을 읽을 수 없어요. 텍스트를 직접 붙여넣어 주세요.");
   }
-
-  let body: unknown = null;
-  try {
-    body = await res.json();
-  } catch {
-    // 본문이 없거나 JSON이 아님
-  }
-
-  if (!res.ok) {
-    if (isApiErrorBody(body)) throw new ApiRequestError(res.status, body.error, body.message);
-    throw new ApiRequestError(res.status, "unknown_error", "알 수 없는 오류가 발생했어요.");
-  }
-
-  return body as ExtractFileResponse;
 }
