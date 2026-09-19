@@ -50,7 +50,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="w-full max-w-sm rounded-xl bg-[var(--color-surface)] p-5 shadow-lg"
+        className="w-full max-w-sm rounded-xl bg-[var(--color-surface)] p-5 shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="confirm-dialog-title" className="text-base font-semibold text-[var(--color-text)]">
@@ -63,7 +63,8 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]"
+            className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-border)]"
+            aria-label={cancelLabel}
           >
             {cancelLabel}
           </button>
@@ -72,11 +73,12 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               danger
-                ? "bg-[var(--color-danger)] hover:opacity-90"
-                : "bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)]"
+                ? "bg-[var(--color-danger)] hover:opacity-90 focus:ring-[var(--color-danger)]"
+                : "bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] focus:ring-[var(--color-brand)]"
             }`}
+            aria-label={confirmLabel}
           >
             {loading ? "처리 중…" : confirmLabel}
           </button>

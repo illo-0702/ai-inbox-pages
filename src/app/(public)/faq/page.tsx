@@ -1,0 +1,176 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+
+export default function FAQPage() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+
+  const faqs = [
+    {
+      q: "AI Inbox가 뭐예요?",
+      a: 'AI Inbox는 여러 곳에서 받은 요청을 관계별로 연결하고, 변경사항을 추적해 지금 해야 할 일을 보여주는 개인 업무 정리 서비스입니다. 메시지를 붙여넣기만 하면 AI가 발신자, 관계, 요청 내용, 마감, 금액을 자동으로 추출합니다.',
+    },
+    {
+      q: "같은 업체의 두 담당자 메시지가 어떻게 하나로 연결되나요?",
+      a: "AI Inbox는 발신자와 관계를 먼저 파악한 후, 그 관계 내에서 업무 후보를 찾습니다. 같은 업체에서 오는 후속 메시지도 기존 업무와 비교하여, 변경사항이 있으면 제안합니다. 사용자가 확인 후 적용하면 한 건의 업무로 유지되며 변경 이력이 기록됩니다.",
+    },
+    {
+      q: "변경사항은 자동으로 적용되나요?",
+      a: "아니요. AI가 분석한 결과를 사용자가 먼저 확인합니다. '명확한 변경'이라도 사용자가 [변경 반영]을 누를 때만 적용됩니다. 애매한 표현이나 잠정적인 말은 현재 조건을 유지하고 사용자가 판단할 때까지 보류합니다.",
+    },
+    {
+      q: "개인정보는 어떻게 다루나요?",
+      a: "메시지 원문은 현재 분석 화면에서만 사용하며, 저장할 때는 정리된 정보(발신자, 관계, 요청, 마감, 금액 등)만 보관합니다. 분석에 필요한 원본은 즉시 처리하고 영구 저장하지 않습니다.",
+    },
+    {
+      q: "비용은 얼마인가요?",
+      a: "현재는 무료로 제공되는 MVP(최소한의 기능을 갖춘 제품) 단계입니다. 향후 가격 정책은 별도로 공지될 예정입니다.",
+    },
+    {
+      q: "모바일에서 사용 가능한가요?",
+      a: "네, 웹 브라우저로 접속하면 모바일에서도 사용 가능합니다. 반응형 디자인으로 제작되어 핸드폰 화면에서도 편하게 사용할 수 있습니다.",
+    },
+    {
+      q: "이메일, 카카오톡 등과 자동 연동되나요?",
+      a: "현재 MVP 단계에서는 수동 입력만 지원합니다. 자동 연동 기능은 핵심 가치 검증 후 향후 확장을 검토할 예정입니다.",
+    },
+    {
+      q: "데이터는 얼마나 오래 보관되나요?",
+      a: "공개 데모 MVP의 경우 세션별로 24시간 보관 후 자동 삭제됩니다. 계정 기반으로 전환될 때는 별도로 안내할 예정입니다. 원하면 언제든 [데이터 삭제]로 즉시 삭제할 수 있습니다.",
+    },
+    {
+      q: "과거 메시지를 나중에 입력하면 어떻게 되나요?",
+      a: '예를 들어, 9월 22일에 9월 18일에 받은 메시지를 입력하는 경우, 받은 시각을 기준으로 처리합니다. 최신 메시지라는 이유만으로 기존 조건을 덮어쓰지 않고, 나중에 입력된 과거 정보가 현재 값을 변경하지 않습니다.',
+    },
+    {
+      q: "같은 업체에 송금이 두 건일 때는 어떻게 되나요?",
+      a: "각 송금을 구분하기 위해 금액, 마감, 대상 등을 비교합니다. 후보가 여러 개면 사용자가 [금액 9/20]이나 [금액 9/22] 처럼 선택할 수 있게 표시합니다. AI가 임의로 하나를 선택하지 않습니다.",
+    },
+    {
+      q: "완료 처리 후 다시 미완료로 돌릴 수 있나요?",
+      a: "네, [미완료로 되돌리기]를 누르면 언제든 복구할 수 있습니다. 기존 변경 이력도 모두 유지됩니다.",
+    },
+    {
+      q: "완료한 업무에 새 메시지가 들어오면 어떻게 되나요?",
+      a: "완료한 업무는 자동으로 다시 열리지 않습니다. 새 메시지가 기존 업무를 수정하는 건지, 새로운 업무인지 사용자가 판단할 때까지 보류합니다.",
+    },
+    {
+      q: "같은 요청을 여러 번 입력하면?",
+      a: "같은 요청이 중복으로 저장되지 않도록 기본 설계되어 있습니다. 같은 메시지를 다시 입력했다면 안내를 받게 됩니다.",
+    },
+    {
+      q: "분석이 실패하면 어떻게 되나요?",
+      a: "분석 실패 시 현재 입력 화면에 내용이 유지되어, 수정 후 다시 시도할 수 있습니다. 기존 업무는 변경되지 않습니다.",
+    },
+    {
+      q: "비정상 종료되거나 데이터가 손상되었다고 표시되면?",
+      a: "먼저 새로고침을 해보세요. 문제가 지속되면, [데이터 삭제]로 세션을 초기화하고 처음부터 시작할 수 있습니다. 이전 데이터는 복구되지 않습니다.",
+    },
+  ];
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      {/* Header */}
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
+          <Link href="/" className="flex items-baseline gap-2">
+            <span className="text-lg font-bold text-[var(--color-text)]">AI Inbox</span>
+            <span className="hidden text-xs text-[var(--color-text-muted)] sm:inline">
+              흩어진 연락을 지금 해야 할 일로
+            </span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/how-it-works" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+              사용 방법
+            </Link>
+            <Link href="/faq" className="text-sm font-semibold text-[var(--color-text)]">
+              FAQ
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 bg-[var(--color-surface)] py-12 sm:py-16">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <div className="mb-12 space-y-4">
+            <h1 className="text-4xl font-bold text-[var(--color-text)]">
+              자주 묻는 질문
+            </h1>
+            <p className="text-lg text-[var(--color-text-muted)]">
+              AI Inbox 사용 중 궁금한 점을 찾아보세요.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {faqs.map((faq, index) => (
+              <div
+                key={index}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+              >
+                <button
+                  onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                  className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-[var(--color-surface-muted)]"
+                >
+                  <span className="font-semibold text-[var(--color-text)]">{faq.q}</span>
+                  <span
+                    className={`flex-shrink-0 text-[var(--color-text-muted)] transition-transform ${
+                      openIndex === index ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▼
+                  </span>
+                </button>
+
+                {openIndex === index && (
+                  <div className="border-t border-[var(--color-border)] px-6 py-4">
+                    <p className="text-[var(--color-text-muted)]">{faq.a}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Contact Section */}
+          <section className="mt-12 rounded-lg bg-[var(--color-brand-muted)] p-8">
+            <h2 className="mb-3 text-xl font-bold text-[var(--color-text)]">
+              더 도움이 필요하신가요?
+            </h2>
+            <p className="mb-4 text-[var(--color-text-muted)]">
+              위의 FAQ에서 답변을 찾지 못하셨다면, 언제든 문의해주세요.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/input">
+                <button className="rounded-lg bg-[var(--color-brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-brand-hover)]">
+                  지금 시작하기
+                </button>
+              </Link>
+              <Link href="/">
+                <button className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]">
+                  홈으로 돌아가기
+                </button>
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] py-6">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <div className="flex flex-col items-center justify-between gap-4 text-sm text-[var(--color-text-muted)] sm:flex-row">
+            <p>&copy; 2026 AI Inbox. All rights reserved.</p>
+            <div className="flex gap-4">
+              <Link href="/how-it-works" className="hover:text-[var(--color-text)]">
+                사용 방법
+              </Link>
+              <Link href="/faq" className="hover:text-[var(--color-text)]">
+                FAQ
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

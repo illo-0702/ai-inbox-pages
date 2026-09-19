@@ -74,6 +74,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <h1 className="sr-only">현재 할 일</h1>
       <section>
         <p className="text-sm text-[var(--color-text-muted)]">
           여러 곳에서 받은 요청을 관계별로 연결하고, 지금 유효한 조건과 변경 이력을 함께 보여드려요.
@@ -118,7 +119,7 @@ export default function DashboardPage() {
                 role="tab"
                 aria-selected={tab === "open"}
                 onClick={() => setTab("open")}
-                className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] ${
                   tab === "open"
                     ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-card)]"
                     : "text-[var(--color-text-muted)]"
@@ -131,7 +132,7 @@ export default function DashboardPage() {
                 role="tab"
                 aria-selected={tab === "done"}
                 onClick={() => setTab("done")}
-                className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                className={`rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] ${
                   tab === "done"
                     ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-card)]"
                     : "text-[var(--color-text-muted)]"

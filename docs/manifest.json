@@ -1,0 +1,26 @@
+{
+  "name": "AI Inbox — 흩어진 연락을 지금 해야 할 일로",
+  "short_name": "AI Inbox",
+  "description": "여러 곳에서 받은 요청을 관계별로 연결하고 변경사항을 추적해 지금 해야 할 일을 보여주는 개인 AI Inbox.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
+}

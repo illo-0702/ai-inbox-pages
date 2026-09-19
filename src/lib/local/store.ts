@@ -19,6 +19,7 @@ import type {
   RelationshipDetail,
   RelationshipRef,
   RelationshipSummary,
+  TaskKind,
   TaskSnapshot,
   TaskStatus,
   TaskView,
@@ -610,4 +611,208 @@ export function getProposalViewLocal(id: string): ProposalDetailResponse | null 
 
 export function deleteAllLocal(): void {
   clearData();
+}
+
+// ─────────────────────────────── 직접 입력 업무 생성/수정 ───────────────────────────────
+
+export interface CreateTaskDirectInput {
+  relationshipName: string;
+  kind: TaskKind;
+  title: string;
+  amount: number | null;
+  currency: string;
+  dueDate: string | null;
+}
+
+export interface UpdateTaskDirectInput extends CreateTaskDirectInput {
+  expectedVersion: number;
+}
+
+/**
+ * 직접 입력으로 업무를 생성한다
+ */
+export function createTaskDirectLocal(input: CreateTaskDirectInput): TaskView | null {
+  return withData((data) => {
+    const now = nowIso();
+    const normalized = normalizeRelationshipName(input.relationshipName);
+
+    // 기존 관계 찾기 또는 새 관계 생성
+    let relationshipId: string;
+    const existing = data.relationships.find((r) => r.normalizedName === normalized);
+
+    if (existing) {
+      relationshipId = existing.id;
+      existing.updatedAt = now;
+    } else {
+      relationshipId = uuid();
+      data.relationships.push({
+        id: relationshipId,
+        name: input.relationshipName,
+        normalizedName: normalized,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // 새 업무 생성
+    const taskId = uuid();
+    const taskRow: TaskRow = {
+      id: taskId,
+      relationshipId,
+      kind: input.kind,
+      title: input.title,
+      amount: input.amount,
+      currency: input.currency,
+      dueDate: input.dueDate,
+      status: "open",
+      version: 1,
+      lastReceivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+    };
+    data.tasks.push(taskRow);
+
+    // 이벤트 생성
+    const eventId = uuid();
+    data.events.push({
+      id: eventId,
+      taskId,
+      relationshipId,
+      contactName: null,
+      eventType: "task_created",
+      fieldChanges: [],
+      receivedAt: null,
+      appliedAt: now,
+      actor: "user",
+    });
+
+    // TaskView 반환
+    return toTaskView(data, taskRow);
+  }) ?? null;
+}
+
+/**
+ * 직접 입력으로 업무를 수정한다
+ */
+export function updateTaskDirectLocal(id: string, input: UpdateTaskDirectInput): TaskView | null {
+  return withData((data) => {
+    const taskRow = data.tasks.find((t) => t.id === id);
+    if (!taskRow) {
+      throw new LocalStoreError("not_found", "업무를 찾을 수 없습니다.", 404);
+    }
+
+    // 버전 확인
+    if (taskRow.version !== input.expectedVersion) {
+      throw new LocalVersionConflictError({
+        ...toTaskSnapshot(taskRow),
+        relationshipName: relationshipNameOf(data, taskRow.relationshipId),
+      });
+    }
+
+    const now = nowIso();
+    const normalized = normalizeRelationshipName(input.relationshipName);
+
+    // 기존 관계 찾기 또는 새 관계 생성
+    let newRelationshipId: string;
+    const existing = data.relationships.find((r) => r.normalizedName === normalized);
+
+    if (existing) {
+      newRelationshipId = existing.id;
+      existing.updatedAt = now;
+    } else {
+      newRelationshipId = uuid();
+      data.relationships.push({
+        id: newRelationshipId,
+        name: input.relationshipName,
+        normalizedName: normalized,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // 필드 변경 기록
+    const changes: FieldChange[] = [];
+
+    if (taskRow.title !== input.title) {
+      changes.push({ field: "title", before: taskRow.title, after: input.title });
+    }
+    if (taskRow.amount !== input.amount) {
+      changes.push({ field: "amount", before: taskRow.amount, after: input.amount });
+    }
+    if (taskRow.currency !== input.currency) {
+      changes.push({ field: "currency", before: taskRow.currency, after: input.currency });
+    }
+    if (taskRow.dueDate !== input.dueDate) {
+      changes.push({ field: "dueDate", before: taskRow.dueDate, after: input.dueDate });
+    }
+
+    // 업무 업데이트
+    taskRow.relationshipId = newRelationshipId;
+    taskRow.title = input.title;
+    taskRow.amount = input.amount;
+    taskRow.currency = input.currency;
+    taskRow.dueDate = input.dueDate;
+    taskRow.version += 1;
+    taskRow.updatedAt = now;
+
+    // 변경이 있으면 이벤트 생성
+    if (changes.length > 0) {
+      const eventId = uuid();
+      data.events.push({
+        id: eventId,
+        taskId: id,
+        relationshipId: newRelationshipId,
+        contactName: null,
+        eventType: "task_updated",
+        fieldChanges: changes,
+        receivedAt: null,
+        appliedAt: now,
+        actor: "user",
+      });
+    }
+
+    // TaskView 반환
+    return toTaskView(data, taskRow);
+  }) ?? null;
+}
+
+/**
+ * TaskRow를 TaskView로 변환
+ */
+function toTaskView(data: LocalData, taskRow: TaskRow): TaskView {
+  const relationshipName = relationshipNameOf(data, taskRow.relationshipId);
+  const lastEventForTask = data.events
+    .filter((e) => e.taskId === taskRow.id)
+    .sort((a, b) => b.appliedAt.localeCompare(a.appliedAt))[0];
+
+  const lastChange = lastEventForTask
+    ? {
+        changes: lastEventForTask.fieldChanges,
+        appliedAt: lastEventForTask.appliedAt,
+        contactName: lastEventForTask.contactName,
+      }
+    : null;
+
+  const pendingProposals = data.proposals.filter((p) => p.taskId === taskRow.id && p.decision === "pending");
+
+  return {
+    id: taskRow.id,
+    relationshipId: taskRow.relationshipId,
+    relationshipName,
+    kind: taskRow.kind,
+    title: taskRow.title,
+    amount: taskRow.amount,
+    currency: taskRow.currency,
+    dueDate: taskRow.dueDate,
+    status: taskRow.status,
+    version: taskRow.version,
+    lastReceivedAt: taskRow.lastReceivedAt,
+    createdAt: taskRow.createdAt,
+    updatedAt: taskRow.updatedAt,
+    completedAt: taskRow.completedAt,
+    lastChange,
+    pendingProposalCount: pendingProposals.length,
+    dueState: dueStateOf(taskRow.dueDate, todayInSeoul()),
+  };
 }

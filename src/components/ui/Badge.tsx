@@ -18,6 +18,8 @@ export function JudgmentBadge({
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}
+      role="status"
+      aria-label={full ? judgmentLabel[judgment] : judgmentShortLabel[judgment]}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
       {full ? judgmentLabel[judgment] : judgmentShortLabel[judgment]}
@@ -32,7 +34,11 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
       ? "text-[var(--color-success)] bg-[var(--color-success-bg)] border border-[var(--color-success-border)]"
       : "text-[var(--color-text-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]";
   return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${tone}`}>
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${tone}`}
+      role="status"
+      aria-label={`업무 상태: ${taskStatusLabel[status]}`}
+    >
       {taskStatusLabel[status]}
     </span>
   );
@@ -45,9 +51,14 @@ export function DueStateBadge({ dueState }: { dueState: "overdue" | "today" | "u
     dueState === "overdue"
       ? "text-[var(--color-danger)] bg-[var(--color-danger-bg)] border border-[var(--color-danger-border)]"
       : "text-[var(--color-warning)] bg-[var(--color-warning-bg)] border border-[var(--color-warning-border)]";
+  const label = dueState === "overdue" ? "기한 지남" : "오늘 마감";
   return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${tone}`}>
-      {dueState === "overdue" ? "기한 지남" : "오늘 마감"}
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${tone}`}
+      role="alert"
+      aria-label={label}
+    >
+      {label}
     </span>
   );
 }
@@ -56,7 +67,11 @@ export function DueStateBadge({ dueState }: { dueState: "overdue" | "today" | "u
 export function PendingCountBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-warning)]">
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2.5 py-1 text-xs font-medium text-[var(--color-warning)]"
+      role="alert"
+      aria-label={`변경 확인 필요 ${count}건`}
+    >
       변경 확인 필요 {count}건
     </span>
   );

@@ -10,13 +10,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClass: Record<Variant, string> = {
   primary:
-    "bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] disabled:bg-[var(--color-border)] disabled:text-[var(--color-text-faint)]",
+    "bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] disabled:bg-[var(--color-border)] disabled:text-[var(--color-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:ring-offset-2 dark:focus:ring-offset-gray-900",
   secondary:
-    "bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] disabled:text-[var(--color-text-faint)]",
+    "bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] disabled:text-[var(--color-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:ring-offset-2 dark:focus:ring-offset-gray-900",
   ghost:
-    "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] disabled:text-[var(--color-text-faint)]",
+    "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] disabled:text-[var(--color-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:ring-offset-2 dark:focus:ring-offset-gray-900",
   danger:
-    "bg-transparent text-[var(--color-danger)] border border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg)] disabled:text-[var(--color-text-faint)] disabled:border-[var(--color-border)]",
+    "bg-transparent text-[var(--color-danger)] border border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg)] disabled:text-[var(--color-text-faint)] disabled:border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-danger)] focus:ring-offset-2 dark:focus:ring-offset-gray-900",
 };
 
 export function Button({

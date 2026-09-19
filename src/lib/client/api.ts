@@ -11,6 +11,7 @@ import type {
   ProposalDetailResponse,
   RelationshipDetail,
   RelationshipSummary,
+  TaskKind,
   TaskSnapshot,
   TaskStatus,
   TaskView,
@@ -19,6 +20,7 @@ import type {
 import { FileExtractError, type CapabilitiesResponse, type ExtractFileResponse } from "@/lib/files/types";
 import {
   analyzeLocal,
+  createTaskDirectLocal,
   decideLocal,
   decidePendingLocal,
   deleteAllLocal,
@@ -29,6 +31,7 @@ import {
   LocalStoreError,
   LocalVersionConflictError,
   setTaskStatusLocal,
+  updateTaskDirectLocal,
 } from "@/lib/local/store";
 import { extractPdfTextInBrowser } from "@/lib/files/pdf-browser";
 
@@ -155,4 +158,35 @@ export async function extractFile(file: File): Promise<ExtractFileResponse> {
     if (err instanceof FileExtractError) throw new ApiRequestError(err.status, err.code, err.message);
     throw new ApiRequestError(400, "unreadable_file", "파일을 읽을 수 없어요. 텍스트를 직접 붙여넣어 주세요.");
   }
+}
+
+export interface CreateTaskDirectRequest {
+  relationshipName: string;
+  kind: TaskKind;
+  title: string;
+  amount: number | null;
+  currency: string;
+  dueDate: string | null;
+}
+
+export interface UpdateTaskDirectRequest extends CreateTaskDirectRequest {
+  expectedVersion: number;
+}
+
+/** 직접 입력으로 업무를 생성한다 */
+export function createTaskDirect(req: CreateTaskDirectRequest): Promise<TaskView> {
+  return run(() => {
+    const result = createTaskDirectLocal(req);
+    if (!result) throw new LocalStoreError("failed_to_create", "업무를 생성하지 못했어요.", 500);
+    return result;
+  });
+}
+
+/** 직접 입력으로 업무를 수정한다 */
+export function updateTaskDirect(id: string, req: UpdateTaskDirectRequest): Promise<TaskView> {
+  return run(() => {
+    const result = updateTaskDirectLocal(id, req);
+    if (!result) throw new LocalStoreError("failed_to_update", "업무를 수정하지 못했어요.", 500);
+    return result;
+  });
 }
