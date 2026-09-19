@@ -34,6 +34,7 @@ import {
   updateTaskDirectLocal,
 } from "@/lib/local/store";
 import { extractPdfTextInBrowser } from "@/lib/files/pdf-browser";
+import { extractImageTextInBrowser } from "@/lib/files/image-browser";
 
 export type { ProposalDetailResponse };
 export type { CapabilitiesResponse, ExtractFileResponse };
@@ -138,22 +139,36 @@ export function deleteSession(): Promise<{ ok: true }> {
   });
 }
 
-/** 이 버전은 서버 AI를 연결하지 않으므로 이미지 인식은 항상 꺼져 있다. PDF는 브라우저에서 직접 읽는다. */
+/** PDF와 이미지는 브라우저에서 직접 처리한다. 서버 AI는 없다. */
 export function getCapabilities(): Promise<CapabilitiesResponse> {
-  return Promise.resolve({ pdfInput: true, imageInput: false });
+  return Promise.resolve({ pdfInput: true, imageInput: true });
 }
 
-/** PDF에서 글자를 추출한다. 서버가 없으므로 브라우저(pdfjs)에서 직접 처리하고, 어디에도 저장하지 않는다. */
+/** PDF나 이미지에서 글자를 추출한다. 서버가 없으므로 브라우저에서 직접 처리하고, 어디에도 저장하지 않는다. */
 export async function extractFile(file: File): Promise<ExtractFileResponse> {
-  const kind = file.type === "application/pdf" ? "pdf" : null;
+  const mimeType = file.type.toLowerCase();
+  let kind: "pdf" | "image" | null = null;
+
+  if (mimeType === "application/pdf") {
+    kind = "pdf";
+  } else if (["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    kind = "image";
+  }
+
   if (!kind) {
-    throw new ApiRequestError(415, "unsupported_file", "PDF만 지원해요. 텍스트를 직접 붙여넣어도 돼요.");
+    throw new ApiRequestError(415, "unsupported_file", "PDF, JPG, PNG, WEBP만 지원해요. 텍스트를 직접 붙여넣어도 돼요.");
   }
-  if (file.size > 4 * 1024 * 1024) {
-    throw new ApiRequestError(413, "file_too_large", "4MB 이하 파일만 지원해요.");
-  }
+
   try {
-    return await extractPdfTextInBrowser(file);
+    if (kind === "pdf") {
+      if (file.size > 4 * 1024 * 1024) {
+        throw new ApiRequestError(413, "file_too_large", "PDF는 4MB 이하만 지원해요.");
+      }
+      return await extractPdfTextInBrowser(file);
+    } else {
+      // kind === "image"
+      return await extractImageTextInBrowser(file);
+    }
   } catch (err) {
     if (err instanceof FileExtractError) throw new ApiRequestError(err.status, err.code, err.message);
     throw new ApiRequestError(400, "unreadable_file", "파일을 읽을 수 없어요. 텍스트를 직접 붙여넣어 주세요.");

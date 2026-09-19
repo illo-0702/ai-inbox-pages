@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const NAV = [
   { href: "/", label: "현재 할 일" },
@@ -50,6 +51,18 @@ export function Header() {
               </Link>
             );
           })}
+          <NotificationBell />
+          <Link
+            href="/settings"
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] ${
+              pathname.startsWith("/settings")
+                ? "bg-[var(--color-brand-muted)] text-[var(--color-brand-text)]"
+                : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+            }`}
+            aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+          >
+            설정
+          </Link>
           <Link
             href="/input"
             className="rounded-lg bg-[var(--color-brand)] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[var(--color-brand-hover)] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-brand)]"

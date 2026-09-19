@@ -152,6 +152,65 @@ export function filterAndSort(
 }
 
 /**
+ * 고급 필터 옵션 타입
+ */
+export interface AdvancedFilterOptions {
+  dateStart?: string; // "YYYY-MM-DD"
+  dateEnd?: string; // "YYYY-MM-DD"
+  amountMin?: number; // 최소금액 (원)
+  amountMax?: number; // 최대금액 (원)
+  status?: "open" | "done" | "all"; // 상태
+  currency?: string; // "KRW", "USD", "EUR", "JPY", "기타" 등
+}
+
+/**
+ * 고급 필터 적용
+ */
+export function applyAdvancedFilters(
+  tasks: TaskView[],
+  options: AdvancedFilterOptions
+): TaskView[] {
+  let filtered = tasks;
+
+  // 기간 필터
+  if (options.dateStart || options.dateEnd) {
+    filtered = filtered.filter((t) => {
+      if (!t.dueDate) return !options.dateStart && !options.dateEnd; // 마감 없음
+      if (options.dateStart && t.dueDate < options.dateStart) return false;
+      if (options.dateEnd && t.dueDate > options.dateEnd) return false;
+      return true;
+    });
+  }
+
+  // 금액 범위 필터
+  if (options.amountMin !== undefined || options.amountMax !== undefined) {
+    filtered = filtered.filter((t) => {
+      if (t.amount === null) return false; // 금액 없으면 제외
+      if (options.amountMin !== undefined && t.amount < options.amountMin) return false;
+      if (options.amountMax !== undefined && t.amount > options.amountMax) return false;
+      return true;
+    });
+  }
+
+  // 상태 필터
+  if (options.status && options.status !== "all") {
+    filtered = filtered.filter((t) => t.status === options.status);
+  }
+
+  // 통화 필터
+  if (options.currency && options.currency !== "all") {
+    if (options.currency === "기타") {
+      // "기타"는 KRW, USD, EUR, JPY가 아닌 것들
+      filtered = filtered.filter((t) => !["KRW", "USD", "EUR", "JPY"].includes(t.currency || ""));
+    } else {
+      filtered = filtered.filter((t) => t.currency === options.currency);
+    }
+  }
+
+  return filtered;
+}
+
+/**
  * 필터 표시명
  */
 export function getFilterLabel(filter: FilterType): string {

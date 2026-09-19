@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { DashboardResponse, TaskView, RelationshipSummary } from "@/lib/types";
 import { getDashboard, getRelationships, setTaskStatus, ApiConflictError, ApiRequestError } from "@/lib/client/api";
-import { filterAndSort, type FilterType, type SortType } from "@/lib/filters";
+import { filterAndSort, type FilterType, type SortType, type AdvancedFilterOptions, applyAdvancedFilters } from "@/lib/filters";
 import { searchTasks } from "@/lib/search";
 import { Spinner } from "@/components/ui/Spinner";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -13,8 +13,13 @@ import { Button } from "@/components/ui/Button";
 import { TaskCard } from "@/components/dashboard/TaskCard";
 import { SearchInput } from "@/components/search/SearchInput";
 import { FilterChip } from "@/components/filters/FilterChip";
+import { AdvancedFilter } from "@/components/filters/AdvancedFilter";
 
 type Tab = "open" | "done";
+
+const STORAGE_KEY_ADVANCED_FILTER = "ai-inbox:advanced-filter";
+const STORAGE_KEY_BASIC_FILTER = "ai-inbox:basic-filter";
+const STORAGE_KEY_SORT = "ai-inbox:sort";
 
 export default function TasksPage() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
@@ -28,6 +33,8 @@ export default function TasksPage() {
   const [sort, setSort] = useState<SortType>("deadline-asc");
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
+  const [advancedFilter, setAdvancedFilter] = useState<AdvancedFilterOptions>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +49,52 @@ export default function TasksPage() {
       setLoading(false);
     }
   }, []);
+
+  // localStorage에서 필터 상태 복원
+  useEffect(() => {
+    try {
+      const savedBasicFilter = localStorage.getItem(STORAGE_KEY_BASIC_FILTER);
+      const savedSort = localStorage.getItem(STORAGE_KEY_SORT);
+      const savedAdvancedFilter = localStorage.getItem(STORAGE_KEY_ADVANCED_FILTER);
+
+      if (savedBasicFilter) setFilter(savedBasicFilter as FilterType);
+      if (savedSort) setSort(savedSort as SortType);
+      if (savedAdvancedFilter) {
+        const parsed = JSON.parse(savedAdvancedFilter);
+        setAdvancedFilter(parsed);
+      }
+    } catch (e) {
+      // localStorage 오류 무시
+      console.warn("필터 복원 실패:", e);
+    }
+  }, []);
+
+  // 기본 필터 변경 시 localStorage 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_BASIC_FILTER, filter);
+    } catch (e) {
+      console.warn("필터 저장 실패:", e);
+    }
+  }, [filter]);
+
+  // 정렬 변경 시 localStorage 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SORT, sort);
+    } catch (e) {
+      console.warn("정렬 저장 실패:", e);
+    }
+  }, [sort]);
+
+  // 고급 필터 변경 시 localStorage 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ADVANCED_FILTER, JSON.stringify(advancedFilter));
+    } catch (e) {
+      console.warn("고급 필터 저장 실패:", e);
+    }
+  }, [advancedFilter]);
 
   useEffect(() => {
     load();
@@ -83,14 +136,20 @@ export default function TasksPage() {
   const allTasks = tab === "open" ? dashboard.openTasks : dashboard.doneTasks;
   const filteredAndSorted = filterAndSort(allTasks, filter, sort);
 
+  // 고급 필터 적용
+  const advancedFiltered = applyAdvancedFilters(filteredAndSorted, advancedFilter);
+
   // 검색 적용
-  let displayedTasks = filteredAndSorted;
+  let displayedTasks = advancedFiltered;
   if (searchQuery.trim()) {
-    const searchResult = searchTasks(searchQuery, filteredAndSorted, relationships);
+    const searchResult = searchTasks(searchQuery, advancedFiltered, relationships);
     displayedTasks = searchResult.tasks;
   }
 
   const isEmpty = displayedTasks.length === 0;
+
+  // 고급 필터 적용 여부 표시
+  const hasAdvancedFilter = Object.keys(advancedFilter).length > 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -116,7 +175,20 @@ export default function TasksPage() {
 
       {/* 필터 */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-[var(--color-text)]">필터</h3>
+        <div className="flex items-center justify-between gap-4">
+          <h3 className="text-sm font-semibold text-[var(--color-text)]">필터</h3>
+          <button
+            type="button"
+            onClick={() => setAdvancedFilterOpen(true)}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              hasAdvancedFilter
+                ? "bg-[var(--color-primary)] text-white shadow-sm"
+                : "border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)]"
+            }`}
+          >
+            {hasAdvancedFilter ? "✓ 고급 필터" : "⚙ 고급 필터"}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <FilterChip
             type="filter"
@@ -240,6 +312,14 @@ export default function TasksPage() {
           </div>
         )}
       </section>
+
+      {/* 고급 필터 모달 */}
+      <AdvancedFilter
+        isOpen={advancedFilterOpen}
+        options={advancedFilter}
+        onChange={setAdvancedFilter}
+        onClose={() => setAdvancedFilterOpen(false)}
+      />
     </div>
   );
 }
