@@ -132,26 +132,53 @@ const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id)`,
   `CREATE INDEX IF NOT EXISTS idx_events_task ON events(task_id)`,
   `CREATE INDEX IF NOT EXISTS idx_events_relationship ON events(relationship_id)`,
+  // 공개 링크 비용 보호용 — 날짜별 외부 AI 호출 수(내용 없는 집계만)
+  `CREATE TABLE IF NOT EXISTS ai_usage (
+    day TEXT PRIMARY KEY,
+    count INTEGER NOT NULL
+  )`,
 ];
 
 let clientPromise: Promise<Client> | null = null;
 
 /** 앱 전역 싱글톤 client (스키마 보장 완료 후 반환) */
 export function getDb(): Promise<Client> {
-  if (!clientPromise) clientPromise = initDb();
+  if (!clientPromise) {
+    // 초기화에 실패하면 다음 요청에서 다시 시도한다(실패한 프라미스를 계속 들고 있지 않음)
+    clientPromise = initDb().catch((err) => {
+      clientPromise = null;
+      throw err;
+    });
+  }
   return clientPromise;
 }
 
 async function initDb(): Promise<Client> {
-  const url = process.env.DATABASE_URL ?? "file:data/ai-inbox.db";
+  const url = resolveDatabaseUrl(process.env);
   ensureDataDirFor(url);
   const client = createClient({
     url,
-    authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
+    // Vercel의 Turso 연동은 TURSO_* 이름으로 값을 넣어준다
+    authToken: process.env.DATABASE_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN || undefined,
     timeout: 5000,
   });
   await ensureSchema(client);
   return client;
+}
+
+/**
+ * DB 주소 결정: DATABASE_URL → TURSO_DATABASE_URL → (Vercel이면 /tmp 임시 파일) → 로컬 파일.
+ * Vercel 함수는 /tmp 외에는 쓸 수 없고 /tmp도 인스턴스마다 비워질 수 있으므로, 이 경우 데이터가
+ * 사라질 수 있다는 경고만 남기고 동작은 계속한다(Turso 연결 전 확인용).
+ */
+export function resolveDatabaseUrl(env: Record<string, string | undefined>): string {
+  const configured = env.DATABASE_URL?.trim() || env.TURSO_DATABASE_URL?.trim();
+  if (configured) return configured;
+  if (env.VERCEL) {
+    console.warn(JSON.stringify({ db: "ephemeral_tmp", hint: "set DATABASE_URL or connect Turso" }));
+    return "file:/tmp/ai-inbox.db";
+  }
+  return "file:data/ai-inbox.db";
 }
 
 function ensureDataDirFor(url: string): void {
@@ -163,7 +190,11 @@ function ensureDataDirFor(url: string): void {
 }
 
 export async function ensureSchema(client: Client): Promise<void> {
-  await client.execute("PRAGMA foreign_keys=ON");
+  try {
+    await client.execute("PRAGMA foreign_keys=ON");
+  } catch {
+    // 원격(Turso) 등에서 PRAGMA를 받지 않아도 삭제는 명시적 일괄 삭제라 영향 없음
+  }
   for (const stmt of SCHEMA_STATEMENTS) {
     await client.execute(stmt);
   }

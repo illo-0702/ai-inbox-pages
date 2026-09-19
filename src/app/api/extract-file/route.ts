@@ -13,6 +13,9 @@ import {
 } from "@/lib/files/extract";
 import { apiError, handleRouteError } from "@/lib/server/http";
 import { checkAnalyzeRateLimit, getWorkspace } from "@/lib/server/session";
+import { getDb } from "@/lib/server/db";
+import { aiDailyLimitFromEnv, tryConsumeGlobalAiQuota } from "@/lib/server/repo/usage";
+import { todayInSeoul } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +62,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!allowed) {
       errorCode = "rate_limited";
       return apiError("rate_limited", "분석 요청이 너무 많아요. 잠시 후 다시 시도해주세요.", 429);
+    }
+
+    // 공개 링크 비용 보호: 오늘 외부 AI 호출 총량을 넘으면 이미지 인식을 멈춘다.
+    const quotaOk = await tryConsumeGlobalAiQuota(await getDb(), todayInSeoul(), aiDailyLimitFromEnv(process.env));
+    if (!quotaOk) {
+      errorCode = "ai_daily_limit";
+      return apiError("image_unavailable", "오늘 AI 사용량을 모두 써서 이미지 인식을 쉬고 있어요. 텍스트를 붙여넣어 주세요.", 503);
     }
 
     const recognized = await recognizeImageText(bytes, resolved.mime);

@@ -9,6 +9,9 @@ import { analyzeRequestSchema, apiError, handleRouteError, isValidIsoDateTime } 
 import { judge } from "@/lib/server/judge";
 import { buildRelationshipRefs, buildTaskSnapshots } from "@/lib/server/queries";
 import { checkAnalyzeRateLimit, getWorkspace } from "@/lib/server/session";
+import { aiDailyLimitFromEnv, tryConsumeGlobalAiQuota } from "@/lib/server/repo/usage";
+import { resolveProviderOrder } from "@/lib/ai/providers";
+import { todayInSeoul } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +50,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const tasks = await buildTaskSnapshots(db, workspace.id);
     const knownRelationships = relationships.map((r) => ({ name: r.name, contacts: r.contacts }));
 
+    // 공개 링크 비용 보호: 외부 AI가 설정돼 있을 때만 오늘 총량을 예약하고, 넘으면 규칙 엔진으로 처리한다.
+    let extractEnv: Record<string, string | undefined> | undefined;
+    if (resolveProviderOrder(process.env).length > 0) {
+      const quotaOk = await tryConsumeGlobalAiQuota(db, todayInSeoul(), aiDailyLimitFromEnv(process.env));
+      if (!quotaOk) extractEnv = { ...process.env, AI_PROVIDER_ORDER: "none" };
+    }
+
     let result;
     try {
       result = await extract({
@@ -55,7 +65,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         senderHint: senderHint ?? null,
         organizationHint: organizationHint ?? null,
         knownRelationships,
-      });
+      }, extractEnv ? { env: extractEnv } : undefined);
     } catch (err) {
       if (err instanceof ExtractionError) {
         return apiError("analysis_failed", "분석에 실패했어요. 잠시 후 다시 시도해주세요.", 502);
